@@ -35,5 +35,13 @@ Lemma simple_assign2 `{!heapG Σ} l (n : Z):
 Proof.
   iIntros (Φ) "Hloc HΦ".
   (* wp_seq. *)
-  (* wp_apply simple_assign. *)
-Admitted.
+  wp_apply (simple_assign with "Hloc").
+  iIntros "Hloc2".
+  wp_seq.
+  wp_apply (simple_assign with "Hloc2").
+  iIntros "Hloc3".
+  iApply "HΦ".
+  replace (n + 1 + 1) with (n + 2).
+  - done.
+  - omega.
+Qed.
