@@ -38,6 +38,14 @@ Section Concrete2.
     all_even_loop "xs" "state";;
     !"state".
 
+  (* Lemma val_eq_helper a b: *)
+  (*   a = b ↔ #a = #b. *)
+  (* Proof. *)
+  (*   split; intros H0. *)
+  (*   - by rewrite H0. *)
+  (*   - by inversion H0. *)
+  (* Qed. *)
+
   Lemma all_even_loop_wp v xs l (b : bool):
     [[{ l ↦ #b ∗ is_mylist v xs }]]
       all_even_loop v #l
@@ -56,14 +64,17 @@ Section Concrete2.
       + (* b = true *) wp_if_true. wp_store. wp_proj. wp_load.
         wp_apply ("IH" with "Hl Hxtail"). iIntros "[Hl Hxtail]".
         iApply "HΦ". iSplitL "Hl".
-        * replace (bool_decide (n `rem` 2 = 0) && all_even xs' && true) with (all_even xs' && bool_decide (#(n `rem` 2) = #0)). done. admit. (* ADMITTED: boolean manipulations. if these were numbers I would have used omega here *)
+        * replace (bool_decide (n `rem` 2 = 0) && all_even xs' && true) with (all_even xs' && bool_decide (#(n `rem` 2) = #0)). done.
+          replace (bool_decide (#(n `rem` 2) = #0)) with (bool_decide (n `rem` 2 = 0)). ring.
+          apply bool_decide_iff. split; intros H0. by rewrite H0. by inversion H0.
         * iExists tail, vtail. by iFrame.
       + (* b = false *) wp_if_false. wp_store. wp_proj. wp_load.
         wp_apply ("IH" with "Hl Hxtail"). iIntros "[Hl Hxtail]".
         iApply "HΦ". iSplitL "Hl".
-        * admit. (* ADMITTED: more boolean manipulations. *)
+        * replace (all_even xs' && false) with (bool_decide (n `rem` 2 = 0) && all_even xs' && false). done.
+          ring.
         * iExists tail, vtail. by iFrame.
-  Admitted.
+  Qed.
 
   Lemma all_even_prog_wp v xs:
     [[{ is_mylist v xs }]]
@@ -77,8 +88,8 @@ Section Concrete2.
     wp_seq.
     replace (all_even xs && true) with (all_even xs).
     - wp_load. by iApply "HΦ".
-    - admit. (* ADMITTED: more boolean manipulations *)
-  Admitted.
+    - ring.
+  Qed.
 
   Check all_even_prog_wp.
 End Concrete2.
