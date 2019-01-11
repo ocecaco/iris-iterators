@@ -59,7 +59,7 @@ Section ListAllEven.
       (* by iApply ("HΦ" with "[$Hl]"). *)
       iApply ("HΦ" with "[$Hl //]").
     - iDestruct "Hxs" as (tail vtail ->) "(Hltail & Hxtail)".
-      wp_match. wp_proj. wp_op. wp_op. wp_let. wp_load.
+      wp_load.
       destruct b; (wp_if_true || wp_if_false); wp_store; wp_proj; wp_load;
       wp_apply ("IH" with "Hl Hxtail"); iIntros "[Hl Hxtail]";
       iApply "HΦ"; iSplitL "Hl"; try (iExists tail, vtail; by iFrame).
