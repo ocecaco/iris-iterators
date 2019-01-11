@@ -4,7 +4,7 @@ From iris.proofmode Require Export tactics.
 From iris.heap_lang Require Import proofmode notation.
 Set Default Proof Using "Type".
 
-Section Concrete2.
+Section ListAllEven.
   Context `{heapG Σ}.
 
   Inductive mylist : Set :=
@@ -92,4 +92,4 @@ Section Concrete2.
   Qed.
 
   Check all_even_prog_wp.
-End Concrete2.
+End ListAllEven.
