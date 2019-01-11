@@ -60,21 +60,20 @@ Section ListAllEven.
       iApply ("HΦ" with "[$Hl //]").
     - iDestruct "Hxs" as (tail vtail ->) "(Hltail & Hxtail)".
       wp_match. wp_proj. wp_op. wp_op. wp_let. wp_load.
-      destruct b.
-      + (* b = true *) wp_if_true. wp_store. wp_proj. wp_load.
-        wp_apply ("IH" with "Hl Hxtail"). iIntros "[Hl Hxtail]".
-        iApply "HΦ". iSplitL "Hl".
-        * replace (bool_decide (n `rem` 2 = 0) && all_even xs' && true) with (all_even xs' && bool_decide (#(n `rem` 2) = #0)). done.
-          replace (bool_decide (#(n `rem` 2) = #0)) with (bool_decide (n `rem` 2 = 0)). ring.
+      destruct b; (wp_if_true || wp_if_false); wp_store; wp_proj; wp_load;
+      wp_apply ("IH" with "Hl Hxtail"); iIntros "[Hl Hxtail]";
+      iApply "HΦ"; iSplitL "Hl".
+      + (* b = true *)
+        replace (bool_decide (n `rem` 2 = 0) && all_even xs' && true)
+          with (all_even xs' && bool_decide (#(n `rem` 2) = #0)). done.
+        replace (bool_decide (#(n `rem` 2) = #0))
+          with (bool_decide (n `rem` 2 = 0)). ring.
           (* apply bool_decide_iff. apply val_eq_helper. *)
-          apply bool_decide_iff. split; intros H0. by rewrite H0. by inversion H0.
-        * iExists tail, vtail. by iFrame.
-      + (* b = false *) wp_if_false. wp_store. wp_proj. wp_load.
-        wp_apply ("IH" with "Hl Hxtail"). iIntros "[Hl Hxtail]".
-        iApply "HΦ". iSplitL "Hl".
-        * replace (all_even xs' && false) with (bool_decide (n `rem` 2 = 0) && all_even xs' && false). done.
-          ring.
-        * iExists tail, vtail. by iFrame.
+        apply bool_decide_iff. split; intros H0. by rewrite H0. by inversion H0.
+      + iExists tail, vtail. by iFrame.
+      + (* b = false *)
+        by replace (all_even xs' && false) with (bool_decide (n `rem` 2 = 0) && all_even xs' && false) by ring.
+      + iExists tail, vtail. by iFrame.
   Qed.
 
   Lemma all_even_prog_wp v xs:
@@ -87,9 +86,8 @@ Section ListAllEven.
     wp_apply (all_even_loop_wp with "[$Hs $Hxs]").
     iIntros "[Hs Hxs]".
     wp_seq.
-    replace (all_even xs && true) with (all_even xs).
-    - wp_load. by iApply "HΦ".
-    - ring.
+    replace (all_even xs && true) with (all_even xs) by ring.
+    wp_load. by iApply "HΦ".
   Qed.
 
   Check all_even_prog_wp.
