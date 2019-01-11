@@ -62,7 +62,7 @@ Section ListAllEven.
       wp_match. wp_proj. wp_op. wp_op. wp_let. wp_load.
       destruct b; (wp_if_true || wp_if_false); wp_store; wp_proj; wp_load;
       wp_apply ("IH" with "Hl Hxtail"); iIntros "[Hl Hxtail]";
-      iApply "HΦ"; iSplitL "Hl".
+      iApply "HΦ"; iSplitL "Hl"; try (iExists tail, vtail; by iFrame).
       + (* b = true *)
         replace (bool_decide (n `rem` 2 = 0) && all_even xs' && true)
           with (all_even xs' && bool_decide (#(n `rem` 2) = #0)). done.
@@ -70,10 +70,9 @@ Section ListAllEven.
           with (bool_decide (n `rem` 2 = 0)). ring.
           (* apply bool_decide_iff. apply val_eq_helper. *)
         apply bool_decide_iff. split; intros H0. by rewrite H0. by inversion H0.
-      + iExists tail, vtail. by iFrame.
       + (* b = false *)
-        by replace (all_even xs' && false) with (bool_decide (n `rem` 2 = 0) && all_even xs' && false) by ring.
-      + iExists tail, vtail. by iFrame.
+        by replace (all_even xs' && false)
+          with (bool_decide (n `rem` 2 = 0) && all_even xs' && false) by ring.
   Qed.
 
   Lemma all_even_prog_wp v xs:
