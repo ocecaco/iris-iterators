@@ -66,6 +66,7 @@ Section ListAllEven.
         iApply "HΦ". iSplitL "Hl".
         * replace (bool_decide (n `rem` 2 = 0) && all_even xs' && true) with (all_even xs' && bool_decide (#(n `rem` 2) = #0)). done.
           replace (bool_decide (#(n `rem` 2) = #0)) with (bool_decide (n `rem` 2 = 0)). ring.
+          (* apply bool_decide_iff. apply val_eq_helper. *)
           apply bool_decide_iff. split; intros H0. by rewrite H0. by inversion H0.
         * iExists tail, vtail. by iFrame.
       + (* b = false *) wp_if_false. wp_store. wp_proj. wp_load.
