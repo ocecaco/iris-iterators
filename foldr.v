@@ -60,23 +60,91 @@ Section Foldr.
       iApply ("HΦ" with "[$HI //]").
     - iDestruct "HP" as "[HPx HPxs']".
       iDestruct "Hv" as (lt vt ->) "(Hlt & Hvt)".
-      wp_match.
-      wp_proj.
-      wp_let.
-      wp_load.
-      wp_let.
+      wp_match. wp_proj. wp_let. wp_load. wp_let.
       (* not sure if necessary, but couldn't get it to work otherwise *)
       wp_bind (((prog_foldr f) acc) vt)%E.
       (* Had to generalize over Φ in the IH to get this to work, which
       makes sense *)
-      iApply ("IH" with "Hvt HPxs' HI").
-      iIntros (v) "[Hvt HI]".
-      wp_apply ("Hf" with "[$HPx $HI]").
-      iIntros (r) "HI".
+      iApply ("IH" with "Hvt HPxs' HI"). iIntros (v) "[Hvt HI]".
+      wp_apply ("Hf" with "[$HPx $HI]"). iIntros (r) "HI".
       iApply "HΦ".
       iFrame.
       iExists lt, vt. by iFrame.
   Qed.
 
   Check prog_foldr_wp.
+
+  (* Verify some clients, similar to the lecture notes *)
+  Definition prog_add : val :=
+    λ: "x" "y", "x" + "y".
+
+  Definition prog_sum_list : val := λ: "xs",
+    let: "f" := prog_add in
+    prog_foldr "f" #0 "xs".
+
+  Definition is_number (v : val) : iProp Σ :=
+    ⌜∃(k : Z), v = #k⌝%I.
+
+  Definition unwrap_val (v : val) : Z :=
+    match v with
+    | LitV (LitInt n) => n
+    | _ => 0 (* get rid of this somehow, we should be able to prove this never occurs *)
+    end.
+
+  Fixpoint sum_list (xs : list val) : Z :=
+    match xs with
+    | [] => 0
+    | x :: xs' => unwrap_val x + sum_list xs'
+    end.
+
+  Definition sum_invariant (xs : list val) (r : val) : iProp Σ :=
+    ⌜r = #(sum_list xs)⌝%I.
+
+  (* I seem to not be inside the Iris proof mode here (there is no --*
+  line), and the done tactic will not work. *)
+  Lemma sum_invariant_empty_failed_attempt:
+    (sum_invariant [] #0)%I.
+  Proof.
+    rewrite /sum_invariant /=. (* done. *)
+  Admitted.
+
+  Lemma prog_add_wp x ys acc:
+    [[{ is_number x ∗ sum_invariant ys acc }]]
+      prog_add x acc
+    [[{ v, RET v; sum_invariant (x :: ys) v }]].
+  Proof.
+    iIntros (Φ) "[Hx HI] HΦ".
+    wp_rec. wp_let.
+    iDestruct "Hx" as "%".
+    destruct H0. rewrite H0.
+    iDestruct "HI" as "%".
+    rewrite H1.
+    wp_pures.
+    iApply "HΦ".
+    rewrite /sum_invariant.
+    simpl. done.
+  Qed.
+
+  Lemma prog_sum_list_wp v xs:
+    (* Would like to use the proof that all of the elements of xs are
+    numbers to make the pattern matching in sum_list always work and
+    avoid the use of unwrap_val. However, the proof that all elements
+    are numbers is not "in scope" in the postcondition, it seems. *)
+    [[{ is_list v xs ∗ forallI is_number xs }]]
+      prog_sum_list v
+    [[{ r, RET r; is_list v xs ∗ ⌜r = #(sum_list xs)⌝ }]].
+  Proof.
+    iIntros (Φ) "[Hv Hnums] HΦ".
+    wp_rec. wp_pures.
+    iAssert (sum_invariant [] #0) as "Hbase".
+    { by rewrite /sum_invariant /=. }
+    wp_apply (prog_foldr_wp with "[$Hv $Hnums Hbase]").
+    iSplitL "Hbase".
+    - iAssumption.
+    - iIntros (x acc' ys Φ').
+      iApply prog_add_wp.
+    - iIntros (r) "[Hv HI]".
+      iApply "HΦ". by iFrame.
+  Qed.
+
 End Foldr.
