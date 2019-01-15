@@ -1,7 +1,7 @@
-From iris.program_logic Require Export weakestpre total_weakestpre.
-From iris.heap_lang Require Export lang.
+From iris.program_logic Require Export weakestpre.
+From iris.heap_lang Require Export notation lang.
 From iris.proofmode Require Export tactics.
-From iris.heap_lang Require Import proofmode notation.
+From iris.heap_lang Require Import proofmode.
 Set Default Proof Using "Type".
 
 Fixpoint forallI {Σ} {A} (P : A -> iProp Σ) (xs : list A) : iProp Σ :=
@@ -11,7 +11,7 @@ Fixpoint forallI {Σ} {A} (P : A -> iProp Σ) (xs : list A) : iProp Σ :=
   end%I.
 
 Section Foldr.
-  Context `{heapG Σ}.
+  Context `{!heapG Σ}.
 
   Fixpoint is_list (v : val) (xs : list val) :=
     match xs with
@@ -30,16 +30,16 @@ Section Foldr.
       end.
 
   Theorem prog_foldr_wp P (I : list val -> val -> iProp Σ) (f : val) acc v xs:
-    [[{ is_list v xs
+    {{{ is_list v xs
       ∗ forallI P xs
       ∗ I [] acc
       (* This was in the precondition in the lecture notes, but
       perhaps it would be more idiomatic when using the Coq
       implementation of Iris to put it outside the precondition
       somehow. *)
-      ∗ ∀ x acc' ys, [[{ P x ∗ I ys acc' }]] f x acc' [[{ r, RET r; I (x :: ys) r }]] }]]
+      ∗ ∀ x acc' ys, {{{ P x ∗ I ys acc' }}} f x acc' {{{ r, RET r; I (x :: ys) r }}} }}}
       prog_foldr f acc v
-    [[{ r, RET r; is_list v xs ∗ I xs r }]].
+    {{{ r, RET r; is_list v xs ∗ I xs r }}}.
   Proof.
     (* Had to move Hf into the intuitionistic context to be able to re-use it *)
     iIntros (Φ) "[Hv [HP [HI #Hf]]] HΦ".
@@ -57,7 +57,7 @@ Section Foldr.
       wp_bind (((prog_foldr f) acc) vt)%E.
       (* Had to generalize over Φ in the IH to get this to work, which
       makes sense *)
-      iApply ("IH" with "Hvt HPxs' HI"). iIntros (v) "[Hvt HI]".
+      iApply ("IH" with "Hvt HPxs' HI"). iModIntro. iIntros (v) "[Hvt HI]".
       wp_apply ("Hf" with "[$HPx $HI]"). iIntros (r) "HI".
       iApply "HΦ".
       iFrame.
@@ -99,20 +99,22 @@ Section Foldr.
   Lemma sum_invariant_empty_failed_attempt:
     (sum_invariant [] #0)%I.
   Proof.
-    rewrite /sum_invariant /=. (* done. *)
-  Admitted.
+    iIntros "".
+    rewrite /sum_invariant /=.
+    done.
+  Qed.
 
   Lemma prog_add_wp x ys acc:
-    [[{ is_number x ∗ sum_invariant ys acc }]]
+    {{{ is_number x ∗ sum_invariant ys acc }}}
       prog_add x acc
-    [[{ v, RET v; sum_invariant (x :: ys) v }]].
+    {{{ v, RET v; sum_invariant (x :: ys) v }}}.
   Proof.
     iIntros (Φ) "[Hx HI] HΦ".
     wp_rec. wp_let.
     iDestruct "Hx" as "%".
-    destruct H0. rewrite H0.
+    destruct H. rewrite H.
     iDestruct "HI" as "%".
-    rewrite H1.
+    rewrite H0.
     wp_pures.
     iApply "HΦ".
     rewrite /sum_invariant.
@@ -126,9 +128,9 @@ Section Foldr.
     are numbers is not "in scope" in the postcondition, it seems. I
     would like to provide the proof that all elements of the list are
     numbers to the sum_list function. *)
-    [[{ is_list v xs ∗ forallI is_number xs }]]
+    {{{ is_list v xs ∗ forallI is_number xs }}}
       prog_sum_list v
-    [[{ r, RET r; is_list v xs ∗ ⌜r = #(sum_list xs)⌝ }]].
+    {{{ r, RET r; is_list v xs ∗ ⌜r = #(sum_list xs)⌝ }}}.
   Proof.
     iIntros (Φ) "[Hv Hnums] HΦ".
     wp_rec. wp_pures.
@@ -140,6 +142,7 @@ Section Foldr.
     iSplitL "Hbase".
     - iAssumption.
     - iIntros (x acc' ys Φ').
+      iModIntro.
       iApply prog_add_wp.
     - iIntros (r) "[Hv HI]".
       iApply "HΦ". by iFrame.
