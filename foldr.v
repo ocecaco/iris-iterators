@@ -134,6 +134,8 @@ Section Foldr.
     wp_rec. wp_pures.
     iAssert (sum_invariant [] #0) as "Hbase".
     { by rewrite /sum_invariant /=. }
+    (* doesn't work: wp_apply (prog_foldr_wp with "[$Hv $Hnums $Hbase]" prog_add_wp). *)
+    (* instead I am only able to apply prog_add_wp and Hbase after some additional steps *)
     wp_apply (prog_foldr_wp with "[$Hv $Hnums Hbase]").
     iSplitL "Hbase".
     - iAssumption.
