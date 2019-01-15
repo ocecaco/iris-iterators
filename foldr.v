@@ -24,27 +24,19 @@ Section Foldr.
       match: "xs" with
         InjL "unit" => "a"
       | InjR "cons" =>
-        (* Slightly different from lecture notes, maybe there is a
-        typo in there since ! and Fst were
-        swapped *)
         let: "h" := (Fst "cons") in
         let: "t" := !(Snd "cons") in
         "f" "h" ("foldr" "f" "a" "t")
       end.
 
-  (* Observation: Instead of specifying the foldr with respect to a
-  foldr implemented in Coq, this specification uses a predicate I
-  which could be instantiated with something like
-
-  I xs r := foldr (+) 0 xs = r
-
-  Therefore this version seems more general and is not linked to a
-  specific Coq reference implementation. *)
-
   Theorem prog_foldr_wp P (I : list val -> val -> iProp Σ) (f : val) acc v xs:
     [[{ is_list v xs
       ∗ forallI P xs
       ∗ I [] acc
+      (* This was in the precondition in the lecture notes, but
+      perhaps it would be more idiomatic when using the Coq
+      implementation of Iris to put it outside the precondition
+      somehow. *)
       ∗ ∀ x acc' ys, [[{ P x ∗ I ys acc' }]] f x acc' [[{ r, RET r; I (x :: ys) r }]] }]]
       prog_foldr f acc v
     [[{ r, RET r; is_list v xs ∗ I xs r }]].
@@ -60,8 +52,8 @@ Section Foldr.
       iApply ("HΦ" with "[$HI //]").
     - iDestruct "HP" as "[HPx HPxs']".
       iDestruct "Hv" as (lt vt ->) "(Hlt & Hvt)".
-      wp_match. wp_proj. wp_let. wp_load. wp_let.
-      (* not sure if necessary, but couldn't get it to work otherwise *)
+      wp_pures. wp_load. wp_pures.
+      (* not sure if necessary to use wp_bind, but couldn't get it to work otherwise *)
       wp_bind (((prog_foldr f) acc) vt)%E.
       (* Had to generalize over Φ in the IH to get this to work, which
       makes sense *)
@@ -74,7 +66,7 @@ Section Foldr.
 
   Check prog_foldr_wp.
 
-  (* Verify some clients, similar to the lecture notes *)
+  (* Verify sum_list client, similar to the lecture notes *)
   Definition prog_add : val :=
     λ: "x" "y", "x" + "y".
 
@@ -88,7 +80,9 @@ Section Foldr.
   Definition unwrap_val (v : val) : Z :=
     match v with
     | LitV (LitInt n) => n
-    | _ => 0 (* get rid of this somehow, we should be able to prove this never occurs *)
+    | _ => 0 (* get rid of this somehow, we should be able to prove
+      this never occurs, using the fact that the list of val consists
+      only of numbers *)
     end.
 
   Fixpoint sum_list (xs : list val) : Z :=
@@ -129,7 +123,9 @@ Section Foldr.
     (* Would like to use the proof that all of the elements of xs are
     numbers to make the pattern matching in sum_list always work and
     avoid the use of unwrap_val. However, the proof that all elements
-    are numbers is not "in scope" in the postcondition, it seems. *)
+    are numbers is not "in scope" in the postcondition, it seems. I
+    would like to provide the proof that all elements of the list are
+    numbers to the sum_list function. *)
     [[{ is_list v xs ∗ forallI is_number xs }]]
       prog_sum_list v
     [[{ r, RET r; is_list v xs ∗ ⌜r = #(sum_list xs)⌝ }]].
