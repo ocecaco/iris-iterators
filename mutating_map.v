@@ -132,9 +132,10 @@ Section MutatingMap.
     iIntros (Φ) "[Hv Hls] HΦ".
     wp_rec; wp_pures.
     iDestruct (prog_sum_for_each ls v xs n Φ) as "H_foreach".
-    iSpecialize ("H_foreach" with "[$Hv $Hls]").
-    iApply ("H_foreach" with "HΦ").
-  Admitted.
+    iSpecialize ("H_foreach" with "[$Hv $Hls] HΦ").
+    unlock.
+    iApply "H_foreach".
+  Qed.
 
   (* Idea: you should not be able to assume that the list will be
   processed in any particular order in the mapping function that is
