@@ -57,7 +57,7 @@ Section MutatingMap.
     rec: "for_each" "f" "xs" :=
       match: "xs" with
         InjL "unit" => Skip
-      | InjR "cons" => "f" (Fst !"cons");; "for_each" (Snd !"cons")
+      | InjR "cons" => "f" (Fst !"cons");; "for_each" "f" (Snd !"cons")
       end.
 
   Lemma prog_for_each_wp
@@ -77,10 +77,13 @@ Section MutatingMap.
   Definition test_preds (ls : loc) : list ((val -> iProp Σ) * (val -> iProp Σ)) :=
     [(fun v => (⌜v = #ls⌝ ∗ ls ↦ #2)%I, fun v => (⌜v = #ls⌝ ∗ ls ↦ #3)%I)].
 
+  Definition prog_sum_loop : val := λ: "s" "xs",
+    let: "f" := λ: "x", "s" <- !"s" + !"x";; "x" <- !"x" + #1 in
+    prog_for_each "f" "xs".
+
   Definition prog_sum : val := λ: "xs",
     let: "s" := ref #0 in
-    let: "f" := λ: "x", "s" <- !"s" + !"x";; "x" <- !"x" + #1 in
-    prog_for_each "f" "xs";; !"s".
+    prog_sum_loop "s" "xs";; !"s".
 
   (* This is what the closure looks like after some beta
   reductions. There are not actually any free variables on the object
@@ -94,6 +97,31 @@ Section MutatingMap.
   (* Definition loop_invariant (ls : loc) (xs : list val) : iProp Σ := *)
   (*   (∃(xs' : list Z), ⌜xs = nums_to_refs xs'⌝ ∗ ls ↦ #(fold_right Z.add 0 xs'))%I. *)
 
+  Lemma prog_sum_loop_wp (ls : loc) (n : Z) (v : val) (xs : list Z):
+    {{{ is_list v (nums_to_refs xs) ∗ ls ↦ #n }}}
+      prog_sum_loop #ls v
+    {{{ RET #(); is_list v (nums_to_refs (map (fun x => x + 1) xs)) ∗ ls ↦ #(fold_right Z.add 0 xs + n) }}}.
+  Proof.
+    iIntros (Φ) "[Hv Hls] HΦ".
+    wp_rec; wp_pures.
+    iInduction xs as [|k xs'] "IH" forall (n v Φ); simpl.
+    - iDestruct "Hv" as "%"; subst.
+      wp_rec. wp_pures.
+      iApply "HΦ".
+      replace (0 + n) with (n) by omega.
+      by iFrame "Hls".
+    - iDestruct "Hv" as (lh x vt ->) "(Hlh & Hk & Hvt)".
+      iDestruct "Hk" as (lx ->) "Hlx".
+      wp_rec. repeat (wp_load || wp_store || wp_pure _).
+      iApply ("IH" with "Hvt Hls"). iIntros "[Hvt Hls]".
+      iApply "HΦ".
+      replace (foldr Z.add 0 xs' + (n + k)) with (k + foldr Z.add 0 xs' + n) by omega. iFrame.
+      iExists lh, (#lx)%V, vt.
+      iFrame.
+      iSplitR. done.
+      iExists lx. iFrame. done.
+  Qed.
+
   (* Idea: you should not be able to assume that the list will be
   processed in any particular order in the mapping function that is
   supplied as the argument. *)
@@ -104,16 +132,15 @@ Section MutatingMap.
   Proof.
     iIntros (Φ) "Hv HΦ".
     wp_rec. wp_alloc ls as "Hs". wp_pures.
-    wp_rec. wp_pures.
-    iInduction xs as [|n xs'] "IH" forall (v Φ); simpl.
-    - iDestruct "Hv" as "%". rewrite H0.
-      wp_match. wp_pures.
-      wp_load.
-      by iApply "HΦ".
-    - iDestruct "Hv" as (lh x vt ->) "(Hlh & Hn & Hvt)".
-      iDestruct "Hn" as (lx ->) "Hlx".
-      wp_match. repeat (wp_load || wp_store || wp_pure _).
-  Admitted.
+    wp_apply (prog_sum_loop_wp ls 0 v xs with "[$Hv $Hs]").
+    iIntros "[Hv Hls]".
+    wp_seq.
+    wp_load.
+    iApply "HΦ".
+    iFrame.
+    rewrite Z.add_0_r.
+    done.
+  Qed.
 
   (* This is probably a strong enough specification of the
   incrementing closure to be used in the application of for_each. *)
