@@ -11,8 +11,8 @@ Fixpoint is_list `{!heapG Σ} (v : val) (Ψs : list (val -> iProp Σ)) : iProp �
   | Ψ :: Ψs' => ∃(lh : loc) (x vt : val), ⌜v = InjRV #lh⌝ ∗ lh ↦ (x, vt) ∗ Ψ x ∗ is_list vt Ψs'
 end%I.
 
-Definition list_const {Σ} (xs : list val) : list (val -> iProp Σ) :=
-  (map (fun x v => ⌜v = x⌝%I) xs).
+(* Definition list_const {Σ} (xs : list val) : list (val -> iProp Σ) := *)
+(*   (map (fun x v => ⌜v = x⌝%I) xs). *)
 
 Section MutatingMap.
   Context `{heapG Σ}.
@@ -63,15 +63,16 @@ Section MutatingMap.
   Lemma prog_for_each_wp
         (v : val)
         (Ψs : list ((val -> iProp Σ) * (val -> iProp Σ)))
-        (I : list val -> iProp Σ)
+        (I : list (val -> iProp Σ) -> iProp Σ)
         (f : val):
     {{{ is_list v (map fst Ψs)
       ∗ I []
-      ∗ [∗ list] P ∈ Ψs, (∀ x xs, {{{ fst P x ∗ I xs }}} f x {{{ RET #(); snd P x ∗ I (x :: xs) }}})
+      ∗ [∗ list] P ∈ Ψs, (∀ x xs, {{{ P.1 x ∗ I xs }}} f x {{{ RET #(); P.2 x ∗ I (P.2 :: xs) }}})
     }}}
       prog_for_each f v
-    {{{ RET #(); is_list v (map snd Ψs) }}}.
+    {{{ RET #(); is_list v (map snd Ψs) ∗ I (map snd Ψs) }}}.
   Proof.
+    iIntros (Φ) "(Hv & HI & Hf) HΦ".
   Admitted.
 
   Definition test_preds (ls : loc) : list ((val -> iProp Σ) * (val -> iProp Σ)) :=
@@ -91,8 +92,11 @@ Section MutatingMap.
   Definition prog_increment_closure (ls : loc) : val :=
     λ: "x", #ls <- !#ls + !"x";; "x" <- !"x" + #1.
 
+  Definition num_to_ref (x : Z) (v : val) : iProp Σ :=
+    (∃(l : loc), ⌜v = #l⌝ ∗ l ↦ #x)%I.
+
   Definition nums_to_refs (xs : list Z) : list (val -> iProp Σ) :=
-    map (fun (x : Z) (v : val) => ∃(l : loc), ⌜v = #l⌝ ∗ l ↦ #x)%I xs.
+    map num_to_ref xs.
 
   (* Definition loop_invariant (ls : loc) (xs : list val) : iProp Σ := *)
   (*   (∃(xs' : list Z), ⌜xs = nums_to_refs xs'⌝ ∗ ls ↦ #(fold_right Z.add 0 xs'))%I. *)
@@ -104,6 +108,10 @@ Section MutatingMap.
   Proof.
     iIntros (Φ) "[Hv Hls] HΦ".
     wp_rec; wp_pures.
+    (* wp_apply (prog_for_each_wp *)
+    (*             v *)
+    (*             (map (fun x => (num_to_ref x, num_to_ref (x + 1))) xs) *)
+    (*             (fun v => ls ↦ #(fold_right Z.add 0 xs + n))%I); simpl. *)
     iInduction xs as [|k xs'] "IH" forall (n v Φ); simpl.
     - iDestruct "Hv" as "%"; subst.
       wp_rec. wp_pures.
