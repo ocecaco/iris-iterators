@@ -65,7 +65,7 @@ Section MutatingMap.
       | InjR "cons" => "f" (Fst !"cons");; "for_each" "f" (Snd !"cons")
       end.
 
-  Lemma prog_for_each_wp_loop
+  Lemma prog_for_each_loop_wp
         (v : val)
         (Ψs : list ((val -> iProp Σ) * (val -> iProp Σ)))
         (I : list (val -> iProp Σ) -> iProp Σ)
@@ -73,17 +73,17 @@ Section MutatingMap.
         (f : val):
     {{{ is_list v (map fst Ψs)
       ∗ I past
-      ∗ [∗ list] P ∈ Ψs, (∀ x xs, {{{ P.1 x ∗ I xs }}} f x {{{ RET #(); P.2 x ∗ I (P.2 :: xs) }}})
+      ∗ [∗ list] P ∈ Ψs, (∀ x xs, {{{ P.1 x ∗ I xs }}} f x {{{ RET #(); P.2 x ∗ I (xs ++ [P.2]) }}})
     }}}
       prog_for_each f v
-    {{{ RET #(); is_list v (map snd Ψs) ∗ I (reverse (map snd Ψs) ++ past) }}}.
+    {{{ RET #(); is_list v (map snd Ψs) ∗ I (past ++ map snd Ψs) }}}.
   Proof.
     iIntros (Φ) "(Hv & HI & Hf) HΦ".
     iInduction Ψs as [|P Ψs'] "IH" forall (v Φ past); simpl.
     - iDestruct "Hv" as "%"; subst.
       wp_rec. wp_pures.
       iApply "HΦ".
-      (* rewrite app_nil_r. *)
+      rewrite app_nil_r.
       by iFrame.
     - iDestruct "Hv" as (lh x vt ->) "(Hlh & HP1 & Hvt)".
       iDestruct "Hf" as "[Hf0 Hfr]".
@@ -92,54 +92,32 @@ Section MutatingMap.
       wp_apply ("Hf0" with "[$HP1 $HI]").
       iIntros "[HP2 HI]".
       wp_seq. wp_load. wp_proj.
-      iSpecialize ("IH" $! vt Φ (P.2 :: past) with "Hvt HI Hfr").
+      iSpecialize ("IH" $! vt Φ (past ++ [P.2]) with "Hvt HI Hfr").
       wp_apply "IH".
       iIntros "[Hvt HI]".
       iApply "HΦ".
-      replace (reverse (P.2 :: map snd Ψs') ++ past) with (reverse (map snd Ψs') ++ P.2 :: past).
+      replace ((past ++ [P.2]) ++ map snd Ψs') with (past ++ P.2 :: map snd Ψs').
       + iFrame.
         iExists lh, x, vt. by iFrame.
-      + rewrite reverse_cons.
-        rewrite app_assoc_reverse.
-        simpl. done.
+      + rewrite app_assoc_reverse. simpl. done.
   Qed.
 
-  Definition prog_for_each_loop
-    (v : val)
-    (Ψs : list ((val -> iProp Σ) * (val -> iProp Σ)))
-    (I : list (val -> iProp Σ) -> iProp Σ)
-    (past : list (val -> iProp Σ))
-    (f : val) := prog_for_each_wp_loop v Ψs I [] f.
-
-  Check prog_for_each_loop.
+  Definition prog_for_each_wp v Ψs I f := prog_for_each_loop_wp v Ψs I [] f.
 
 End MutatingMap.
 
 Section SumExample.
   Context `{!heapG Σ}.
 
-   Definition prog_increment_closure (ls : loc) : val :=
-    λ: "x", #ls <- !#ls + !"x";; "x" <- !"x" + #1.
+  Definition prog_mapper : val := λ: "s" "x", "s" <- !"s" + !"x";; "x" <- !"x" + #1.
 
   Definition prog_sum_loop : val := λ: "s" "xs",
-    let: "f" := (λ: "x", "s" <- !"s" + !"x";; "x" <- !"x" + #1) in
+    let: "f" := prog_mapper "s" in
     prog_for_each "f" "xs".
 
   Definition prog_sum : val := λ: "xs",
     let: "s" := ref #0 in
     prog_sum_loop "s" "xs";; !"s".
-
-    (* This is probably a strong enough specification of the
-  incrementing closure to be used in the application of for_each. *)
-  Lemma prog_increment_closure_wp (ls : loc) (lx : loc) (n : Z) (k : Z):
-    {{{ ls ↦ #n ∗ lx ↦ #k }}}
-      prog_increment_closure ls #lx
-    {{{ RET #(); ls ↦ #(n + k) ∗ lx ↦ #(k + 1) }}}.
-  Proof.
-    iIntros (Φ) "[Hls Hlx] HΦ".
-    wp_rec. repeat (wp_load || wp_store || wp_pure _).
-    iApply "HΦ". by iFrame.
-  Qed.
 
   Definition num_to_ref (x : Z) (v : val) : iProp Σ :=
     (∃(l : loc), ⌜v = #l⌝ ∗ l ↦ #x)%I.
@@ -147,55 +125,59 @@ Section SumExample.
   Definition nums_to_refs (xs : list Z) : list (val -> iProp Σ) :=
     map num_to_ref xs.
 
-  Lemma prog_sum_for_each (ls : loc) (f : loc -> val) (v : val) (xs : list Z) (n : Z):
-    {{{ is_list v (nums_to_refs xs) ∗ ls ↦ #n
-      ∗ ∀ ls lx (n k : Z),
-            {{{ ls ↦ #n ∗ lx ↦ #k }}}
-              f ls #lx
-            {{{ RET #(); ls ↦ #(n + k) ∗ lx ↦ #(k + 1) }}}
-    }}}
-      prog_for_each (f ls) v
-    {{{ RET #(); is_list v (nums_to_refs (map (λ x : Z, x + 1) xs)) ∗ ls ↦ #(foldr Z.add 0 xs + n) }}}.
-  Proof.
-    iIntros (Φ) "[Hv [Hls #Hf]] HΦ".
-    iInduction xs as [|k xs'] "IH" forall (n v Φ); simpl.
-    - iDestruct "Hv" as "%"; subst.
-      wp_rec. wp_pures.
-      iApply "HΦ".
-      replace (0 + n) with (n) by omega.
-      by iFrame "Hls".
-    - iDestruct "Hv" as (lh x vt ->) "(Hlh & Hk & Hvt)".
-      iDestruct "Hk" as (lx ->) "Hlx".
-      wp_rec. repeat (wp_load || wp_store || wp_pure _).
-      wp_apply ("Hf" with "[$Hls $Hlx]").
-      iIntros "[Hls Hlx]".
-      wp_seq. wp_load. wp_proj.
-      iApply ("IH" with "Hvt Hls"). iModIntro.
-      iIntros "[Hvt Hls]".
-      iApply "HΦ".
-      replace (foldr Z.add 0 xs' + (n + k)) with (k + foldr Z.add 0 xs' + n) by omega. iFrame.
-      iExists lh, (#lx)%V, vt.
-      iFrame.
-      iSplitR. done.
-      iExists lx. iFrame. done.
-  Qed.
+  Definition before_after (xs : list Z) : list ((val -> iProp Σ) * (val -> iProp Σ)) :=
+    map (fun x => (num_to_ref x, num_to_ref (x + 1))) xs.
+
+  Definition sum_invariant (ls : loc) (n : Z) (Ps : list (val -> iProp Σ)) : iProp Σ :=
+    (∃(values : list ((val -> iProp Σ) * (loc * Z))),
+        ⌜map fst values = Ps⌝
+      ∗ ls ↦ #(fold_right Z.add 0 (map (snd ∘ snd) values) + n)
+      ∗ [∗ list] cell ∈ values, cell.2.1 ↦ #(cell.2.2 + 1 : Z) ∗ cell.1 #(cell.2.1 : loc)
+      )%I.
 
   Lemma prog_sum_loop_wp (ls : loc) (n : Z) (v : val) (xs : list Z):
-    {{{ is_list v (nums_to_refs xs) ∗ ls ↦ #n }}}
+    {{{ is_list v (map fst (before_after xs)) ∗ ls ↦ #n }}}
       prog_sum_loop #ls v
-    {{{ RET #(); is_list v (nums_to_refs (map (fun x => x + 1) xs)) ∗ ls ↦ #(fold_right Z.add 0 xs + n) }}}.
+    {{{ RET #(); is_list v (map snd (before_after xs)) ∗ ls ↦ #(fold_right Z.add 0 xs + n) }}}.
   Proof.
     iIntros (Φ) "[Hv Hls] HΦ".
-    wp_rec; wp_pures.
+    wp_rec; wp_pures. wp_lam. wp_pures.
+    wp_apply (prog_for_each_wp
+                v
+                (before_after xs)
+                (sum_invariant ls n)
+                _
+                with "[$Hv Hls]").
+    - admit.
+    - iIntros "[Hv Hinv]".
+      iApply "HΦ". iFrame.
+      rewrite /sum_invariant.
+      iDestruct "Hinv" as (values) "(HPs & Hls & Hlink)".
+      iInduction xs as [|k xs'] "IH" forall (values); simpl.
+      + iDestruct "HPs" as "%". apply map_eq_nil in H; subst; simpl. done.
+      + destruct values.
+        (* empty list is impossible at this point *)
+        { simpl. iDestruct "HPs" as "%". discriminate. }
+        destruct p as [Ψ [lx x]].
+        simpl.
+        iDestruct "HPs" as %H. inversion H; subst.
+        rewrite /num_to_ref.
+        iDestruct "Hlink" as "[[Hlx Hk] Hrest]".
+        iDestruct "Hk" as (ly) "[Heq Hly]".
+        iDestruct "Heq" as %Heq. inversion Heq; subst.
+        iDestruct "Hlx" as "[Hlx1 Hlx2]".
+        iDestruct "Hly" as "[Hly1 Hly2]".
+        iAssert (⌜x = k⌝)%I with "[Hlx1 Hly1]" as "Hxk".
+        admit.
   Admitted.
 
   (* Idea: you should not be able to assume that the list will be
   processed in any particular order in the mapping function that is
   supplied as the argument. *)
   Lemma prog_sum_wp (v : val) (xs : list Z):
-    {{{ is_list v (nums_to_refs xs) }}}
+    {{{ is_list v (map fst (before_after xs)) }}}
       prog_sum v
-    {{{ r, RET r; is_list v (nums_to_refs (map (fun x => x + 1) xs)) ∗ ⌜r = #(fold_right Z.add 0 xs)⌝ }}}.
+    {{{ r, RET r; is_list v (map snd (before_after xs)) ∗ ⌜r = #(fold_right Z.add 0 xs)⌝ }}}.
   Proof.
     iIntros (Φ) "Hv HΦ".
     wp_rec. wp_alloc ls as "Hs". wp_pures.
