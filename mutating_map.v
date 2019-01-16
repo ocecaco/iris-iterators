@@ -11,10 +11,7 @@ Fixpoint is_list `{!heapG Σ} (v : val) (Ψs : list (val -> iProp Σ)) : iProp �
   | Ψ :: Ψs' => ∃(lh : loc) (x vt : val), ⌜v = InjRV #lh⌝ ∗ lh ↦ (x, vt) ∗ Ψ x ∗ is_list vt Ψs'
 end%I.
 
-(* Definition list_const {Σ} (xs : list val) : list (val -> iProp Σ) := *)
-(*   (map (fun x v => ⌜v = x⌝%I) xs). *)
-
-Section MutatingMap.
+Section MyTests.
   Context `{heapG Σ}.
 
   Definition prog_mktestlist : val := λ: "unit",
@@ -53,6 +50,14 @@ Section MutatingMap.
     by repeat (wp_load || wp_store || wp_pure _).
   Qed.
 
+  Definition test_preds (ls : loc) : list ((val -> iProp Σ) * (val -> iProp Σ)) :=
+    [(fun v => (⌜v = #ls⌝ ∗ ls ↦ #2)%I, fun v => (⌜v = #ls⌝ ∗ ls ↦ #3)%I)].
+
+End MyTests.
+
+Section MutatingMap.
+  Context `{heapG Σ}.
+
   Definition prog_for_each : val :=
     rec: "for_each" "f" "xs" :=
       match: "xs" with
@@ -60,25 +65,60 @@ Section MutatingMap.
       | InjR "cons" => "f" (Fst !"cons");; "for_each" "f" (Snd !"cons")
       end.
 
-  Lemma prog_for_each_wp
+  Lemma prog_for_each_wp_loop
         (v : val)
         (Ψs : list ((val -> iProp Σ) * (val -> iProp Σ)))
         (I : list (val -> iProp Σ) -> iProp Σ)
+        (past : list (val -> iProp Σ))
         (f : val):
     {{{ is_list v (map fst Ψs)
-      ∗ I []
+      ∗ I past
       ∗ [∗ list] P ∈ Ψs, (∀ x xs, {{{ P.1 x ∗ I xs }}} f x {{{ RET #(); P.2 x ∗ I (P.2 :: xs) }}})
     }}}
       prog_for_each f v
-    {{{ RET #(); is_list v (map snd Ψs) ∗ I (map snd Ψs) }}}.
+    {{{ RET #(); is_list v (map snd Ψs) ∗ I (reverse (map snd Ψs) ++ past) }}}.
   Proof.
     iIntros (Φ) "(Hv & HI & Hf) HΦ".
-  Admitted.
+    iInduction Ψs as [|P Ψs'] "IH" forall (v Φ past); simpl.
+    - iDestruct "Hv" as "%"; subst.
+      wp_rec. wp_pures.
+      iApply "HΦ".
+      (* rewrite app_nil_r. *)
+      by iFrame.
+    - iDestruct "Hv" as (lh x vt ->) "(Hlh & HP1 & Hvt)".
+      iDestruct "Hf" as "[Hf0 Hfr]".
+      wp_rec. wp_pures. wp_load. wp_pures.
+      iSpecialize ("Hf0" $! x past).
+      wp_apply ("Hf0" with "[$HP1 $HI]").
+      iIntros "[HP2 HI]".
+      wp_seq. wp_load. wp_proj.
+      iSpecialize ("IH" $! vt Φ (P.2 :: past) with "Hvt HI Hfr").
+      wp_apply "IH".
+      iIntros "[Hvt HI]".
+      iApply "HΦ".
+      replace (reverse (P.2 :: map snd Ψs') ++ past) with (reverse (map snd Ψs') ++ P.2 :: past).
+      + iFrame.
+        iExists lh, x, vt. by iFrame.
+      + rewrite reverse_cons.
+        rewrite app_assoc_reverse.
+        simpl. done.
+  Qed.
 
-  Definition test_preds (ls : loc) : list ((val -> iProp Σ) * (val -> iProp Σ)) :=
-    [(fun v => (⌜v = #ls⌝ ∗ ls ↦ #2)%I, fun v => (⌜v = #ls⌝ ∗ ls ↦ #3)%I)].
+  Definition prog_for_each_loop
+    (v : val)
+    (Ψs : list ((val -> iProp Σ) * (val -> iProp Σ)))
+    (I : list (val -> iProp Σ) -> iProp Σ)
+    (past : list (val -> iProp Σ))
+    (f : val) := prog_for_each_wp_loop v Ψs I [] f.
 
-  Definition prog_increment_closure (ls : loc) : val :=
+  Check prog_for_each_loop.
+
+End MutatingMap.
+
+Section SumExample.
+  Context `{!heapG Σ}.
+
+   Definition prog_increment_closure (ls : loc) : val :=
     λ: "x", #ls <- !#ls + !"x";; "x" <- !"x" + #1.
 
   Definition prog_sum_loop : val := λ: "s" "xs",
@@ -88,7 +128,6 @@ Section MutatingMap.
   Definition prog_sum : val := λ: "xs",
     let: "s" := ref #0 in
     prog_sum_loop "s" "xs";; !"s".
-
 
     (* This is probably a strong enough specification of the
   incrementing closure to be used in the application of for_each. *)
@@ -170,5 +209,4 @@ Section MutatingMap.
     done.
   Qed.
 
-
-End MutatingMap.
+End SumExample.
