@@ -62,18 +62,20 @@ Section MutatingMap.
 
   Lemma prog_for_each_wp
         (v : val)
-        (Ψs : list (val -> iProp Σ))
+        (Ψs : list ((val -> iProp Σ) * (val -> iProp Σ)))
         (I : list val -> iProp Σ)
-        (f : val)
-        (T : (val -> iProp Σ) -> (val -> iProp Σ)):
-    {{{ is_list v Ψs
+        (f : val):
+    {{{ is_list v (map fst Ψs)
       ∗ I []
-      ∗ ∀ x xs Ψ, {{{ Ψ x ∗ I xs }}} f x {{{ RET #(); T Ψ x ∗ I (x :: xs) }}}
+      ∗ [∗ list] P ∈ Ψs, (∀ x xs, {{{ fst P x ∗ I xs }}} f x {{{ RET #(); snd P x ∗ I (x :: xs) }}})
     }}}
       prog_for_each f v
-    {{{ RET #(); is_list v (map T Ψs) }}}.
+    {{{ RET #(); is_list v (map snd Ψs) }}}.
   Proof.
   Admitted.
+
+  Definition test_preds (ls : loc) : list ((val -> iProp Σ) * (val -> iProp Σ)) :=
+    [(fun v => (⌜v = #ls⌝ ∗ ls ↦ #2)%I, fun v => (⌜v = #ls⌝ ∗ ls ↦ #3)%I)].
 
   Definition prog_sum : val := λ: "xs",
     let: "s" := ref #0 in
@@ -86,25 +88,31 @@ Section MutatingMap.
   Definition prog_increment_closure (ls : loc) : val :=
     λ: "x", #ls <- !#ls + !"x";; "x" <- !"x" + #1.
 
-  Definition nums_to_vals (xs : list Z) : list val := map (fun x : Z => #x) xs.
+  Definition nums_to_refs (xs : list Z) : list (val -> iProp Σ) :=
+    map (fun (x : Z) (v : val) => ∃(l : loc), ⌜v = #l⌝ ∗ l ↦ #x)%I xs.
 
-  Definition loop_invariant (ls : loc) (xs : list val) : iProp Σ :=
-    (∃(xs' : list Z), ⌜xs = nums_to_vals xs'⌝ ∗ ls ↦ #(fold_right Z.add 0 xs'))%I.
+  (* Definition loop_invariant (ls : loc) (xs : list val) : iProp Σ := *)
+  (*   (∃(xs' : list Z), ⌜xs = nums_to_refs xs'⌝ ∗ ls ↦ #(fold_right Z.add 0 xs'))%I. *)
 
   (* Idea: you should not be able to assume that the list will be
   processed in any particular order in the mapping function that is
   supplied as the argument. *)
   Lemma prog_sum_wp (v : val) (xs : list Z):
-    {{{ is_list v (list_const (nums_to_vals xs)) }}}
+    {{{ is_list v (nums_to_refs xs) }}}
       prog_sum v
-    {{{ r, RET r; is_list v (list_const (nums_to_vals (map (fun x => x + 1) xs))) ∗ ⌜r = #(fold_right Z.add 0 xs)⌝ }}}.
+    {{{ r, RET r; is_list v (nums_to_refs (map (fun x => x + 1) xs)) ∗ ⌜r = #(fold_right Z.add 0 xs)⌝ }}}.
   Proof.
     iIntros (Φ) "Hv HΦ".
     wp_rec. wp_alloc ls as "Hs". wp_pures.
-    wp_apply (prog_for_each_wp
-                v
-                (list_const (nums_to_vals xs))
-                (loop_invariant ls) _ _).
+    wp_rec. wp_pures.
+    iInduction xs as [|n xs'] "IH" forall (v Φ); simpl.
+    - iDestruct "Hv" as "%". rewrite H0.
+      wp_match. wp_pures.
+      wp_load.
+      by iApply "HΦ".
+    - iDestruct "Hv" as (lh x vt ->) "(Hlh & Hn & Hvt)".
+      iDestruct "Hn" as (lx ->) "Hlx".
+      wp_match. repeat (wp_load || wp_store || wp_pure _).
   Admitted.
 
   (* This is probably a strong enough specification of the
