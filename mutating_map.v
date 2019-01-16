@@ -78,19 +78,29 @@ Section MutatingMap.
   Definition test_preds (ls : loc) : list ((val -> iProp Σ) * (val -> iProp Σ)) :=
     [(fun v => (⌜v = #ls⌝ ∗ ls ↦ #2)%I, fun v => (⌜v = #ls⌝ ∗ ls ↦ #3)%I)].
 
+  Definition prog_increment_closure (ls : loc) : val :=
+    λ: "x", #ls <- !#ls + !"x";; "x" <- !"x" + #1.
+
   Definition prog_sum_loop : val := λ: "s" "xs",
-    let: "f" := λ: "x", "s" <- !"s" + !"x";; "x" <- !"x" + #1 in
+    let: "f" := (λ: "x", "s" <- !"s" + !"x";; "x" <- !"x" + #1) in
     prog_for_each "f" "xs".
 
   Definition prog_sum : val := λ: "xs",
     let: "s" := ref #0 in
     prog_sum_loop "s" "xs";; !"s".
 
-  (* This is what the closure looks like after some beta
-  reductions. There are not actually any free variables on the object
-  language level. *)
-  Definition prog_increment_closure (ls : loc) : val :=
-    λ: "x", #ls <- !#ls + !"x";; "x" <- !"x" + #1.
+
+    (* This is probably a strong enough specification of the
+  incrementing closure to be used in the application of for_each. *)
+  Lemma prog_increment_closure_wp (ls : loc) (lx : loc) (n : Z) (k : Z):
+    {{{ ls ↦ #n ∗ lx ↦ #k }}}
+      prog_increment_closure ls #lx
+    {{{ RET #(); ls ↦ #(n + k) ∗ lx ↦ #(k + 1) }}}.
+  Proof.
+    iIntros (Φ) "[Hls Hlx] HΦ".
+    wp_rec. repeat (wp_load || wp_store || wp_pure _).
+    iApply "HΦ". by iFrame.
+  Qed.
 
   Definition num_to_ref (x : Z) (v : val) : iProp Σ :=
     (∃(l : loc), ⌜v = #l⌝ ∗ l ↦ #x)%I.
@@ -98,12 +108,17 @@ Section MutatingMap.
   Definition nums_to_refs (xs : list Z) : list (val -> iProp Σ) :=
     map num_to_ref xs.
 
-  Lemma prog_sum_for_each (ls : loc) (v : val) (xs : list Z) (n : Z):
-    {{{ is_list v (nums_to_refs xs) ∗ ls ↦ #n }}}
-      (prog_for_each (λ: "x", #ls <- ! #ls + ! "x";; "x" <- ! "x" + #1)%V) v
+  Lemma prog_sum_for_each (ls : loc) (f : loc -> val) (v : val) (xs : list Z) (n : Z):
+    {{{ is_list v (nums_to_refs xs) ∗ ls ↦ #n
+      ∗ ∀ ls lx (n k : Z),
+            {{{ ls ↦ #n ∗ lx ↦ #k }}}
+              f ls #lx
+            {{{ RET #(); ls ↦ #(n + k) ∗ lx ↦ #(k + 1) }}}
+    }}}
+      prog_for_each (f ls) v
     {{{ RET #(); is_list v (nums_to_refs (map (λ x : Z, x + 1) xs)) ∗ ls ↦ #(foldr Z.add 0 xs + n) }}}.
   Proof.
-    iIntros (Φ) "[Hv Hls] HΦ".
+    iIntros (Φ) "[Hv [Hls #Hf]] HΦ".
     iInduction xs as [|k xs'] "IH" forall (n v Φ); simpl.
     - iDestruct "Hv" as "%"; subst.
       wp_rec. wp_pures.
@@ -112,8 +127,10 @@ Section MutatingMap.
       by iFrame "Hls".
     - iDestruct "Hv" as (lh x vt ->) "(Hlh & Hk & Hvt)".
       iDestruct "Hk" as (lx ->) "Hlx".
-      wp_rec. repeat (wp_load || wp_store || wp_pure _). wp_lam.
-      repeat (wp_load || wp_store || wp_pure _).
+      wp_rec. repeat (wp_load || wp_store || wp_pure _).
+      wp_apply ("Hf" with "[$Hls $Hlx]").
+      iIntros "[Hls Hlx]".
+      wp_seq. wp_load. wp_proj.
       iApply ("IH" with "Hvt Hls"). iModIntro.
       iIntros "[Hvt Hls]".
       iApply "HΦ".
@@ -131,11 +148,7 @@ Section MutatingMap.
   Proof.
     iIntros (Φ) "[Hv Hls] HΦ".
     wp_rec; wp_pures.
-    iDestruct (prog_sum_for_each ls v xs n Φ) as "H_foreach".
-    iSpecialize ("H_foreach" with "[$Hv $Hls] HΦ").
-    unlock.
-    iApply "H_foreach".
-  Qed.
+  Admitted.
 
   (* Idea: you should not be able to assume that the list will be
   processed in any particular order in the mapping function that is
@@ -157,16 +170,5 @@ Section MutatingMap.
     done.
   Qed.
 
-  (* This is probably a strong enough specification of the
-  incrementing closure to be used in the application of for_each. *)
-  Lemma prog_increment_closure_wp (ls : loc) (lx : loc) (n : Z) (k : Z):
-    {{{ ls ↦ #n ∗ lx ↦ #k }}}
-      prog_increment_closure ls #lx
-    {{{ RET #(); ls ↦ #(n + k) ∗ lx ↦ #(k + 1) }}}.
-  Proof.
-    iIntros (Φ) "[Hls Hlx] HΦ".
-    wp_rec. repeat (wp_load || wp_store || wp_pure _).
-    iApply "HΦ". by iFrame.
-  Qed.
 
 End MutatingMap.
