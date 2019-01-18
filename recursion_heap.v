@@ -2,6 +2,7 @@ From iris.program_logic Require Export weakestpre.
 From iris.heap_lang Require Export notation lang.
 From iris.proofmode Require Export tactics.
 From iris.heap_lang Require Import proofmode.
+From iris.base_logic.lib Require Export invariants.
 Set Default Proof Using "Type".
 
 Section Recursion.
@@ -40,12 +41,26 @@ Section Recursion.
     wp_let.
     wp_store.
     wp_load.
-    wp_rec.
+    wp_lam.
+    iMod (inv_alloc (nroot.@"fib") _ _ with "[Hr]") as "#inv".
+    { iModIntro. iExact "Hr". }
     iInduction n as [|n'] "IH" forall (Φ).
-    - simpl. repeat (wp_load || wp_rec || wp_pure _).
-      by iApply "HΦ".
-    - wp_load. wp_pures. wp_rec. wp_pures.
+    - wp_bind (! _)%E.
+      iInv (nroot.@"fib") as "Hr" "cl".
+      wp_load.
+      iMod ("cl" with "[Hr]") as "_"; first done. iModIntro.
+      wp_lam. wp_pures. iApply "HΦ". by simpl.
+    - wp_bind (! _)%E.
+      iInv (nroot.@"fib") as "Hr" "cl".
+      wp_load.
+      iMod ("cl" with "[Hr]") as "_"; first done. iModIntro.
+      wp_rec. wp_pures.
       replace (S n' - 1) with (n' : Z) by admit.
+      wp_apply "IH".
+      iIntros (v2 ->).
+      wp_op.
+      replace (S n' * factorial n') with (factorial (S n') : Z) by admit.
+      by iApply "HΦ".
   Admitted.
 
 End Recursion.
