@@ -92,4 +92,43 @@ Section Recursion.
     by iApply "HΦ".
   Qed.
 
+  Definition simple_increment : val :=
+    λ: "_", let: "r" := ref #0 in "r" <- !"r" + #1;; !"r".
+
+  Lemma simple_increment_wp:
+    {{{ ⌜True⌝ }}} simple_increment #() {{{ v, RET v; ⌜∃k:Z, v = #k ∧ k >= 0⌝ }}}.
+  Proof.
+    iIntros (Φ) "_ HΦ".
+    wp_lam.
+    wp_alloc r as "Hr".
+    iAssert (∃k:Z, r ↦ #k ∗ ⌜k >= 0⌝)%I with "[Hr]" as "Hr".
+    { iExists 0. by iFrame. }
+    iMod (inv_alloc (nroot.@"foo") _ _ with "[Hr]") as "#Hr_inv".
+    { iModIntro. iExact "Hr". }
+    wp_let.
+    wp_bind (! _)%E.
+    iInv (nroot.@"foo") as "Hr" "cl".
+    (* presumably we can just remove the "later" on this hypothesis
+    because the goal is a WP that is guaranteed to take a step? *)
+    iMod "Hr".
+    iDestruct "Hr" as (k) "[Hr Hk]". iDestruct "Hk" as %Hk.
+    wp_load.
+    iMod ("cl" with "[Hr]") as "_"; first (iModIntro; eauto). iModIntro.
+    wp_op.
+    wp_bind (_ <- _)%E.
+    iInv (nroot.@"foo") as "Hr" "cl".
+    iMod "Hr". iDestruct "Hr" as (m) "[Hr Hm]". iDestruct "Hm" as %Hm.
+    wp_store.
+    iMod ("cl" with "[Hr]") as "_". { iModIntro. assert (k + 1 >= 0) by omega. eauto. }
+    iModIntro. wp_seq.
+    iInv (nroot.@"foo") as "Hr" "cl".
+    iMod "Hr".
+    iDestruct "Hr" as (k3) "[Hr Hn]". iDestruct "Hn" as %Hn.
+    wp_load.
+    iMod ("cl" with "[Hr]") as "_". { iModIntro. assert (k3 + 1 >= 0) by omega. eauto. }
+    iModIntro.
+    iApply "HΦ".
+    eauto.
+  Qed.
+
 End Recursion.
