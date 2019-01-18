@@ -63,4 +63,33 @@ Section Recursion.
       by iApply "HΦ".
   Admitted.
 
+  Definition simple_store : val :=
+    λ: "_", let: "r" := ref #0 in "r" <- #0;; "r" <- #0;; !"r".
+
+  (* this proof doesn't require invariants but uses them just for the sake of it *)
+  Lemma simple_store_wp:
+    {{{ ⌜True⌝ }}} simple_store #() {{{ v, RET v; ⌜v = #0⌝ }}}.
+  Proof.
+    iIntros (Φ) "_ HΦ".
+    wp_rec.
+    wp_alloc r as "Hr".
+    iMod (inv_alloc (nroot.@"foo") _ _ with "[Hr]") as "#Hr_inv".
+    { iModIntro. iExact "Hr". }
+    wp_let.
+    wp_bind (_ <- _)%E.
+    iInv (nroot.@"foo") as "Hr" "cl".
+    wp_store.
+    iMod ("cl" with "[Hr]") as "_"; first done. iModIntro.
+    wp_seq.
+    wp_bind (_ <- _)%E.
+    iInv (nroot.@"foo") as "Hr" "cl".
+    wp_store.
+    iMod ("cl" with "[Hr]") as "_"; first done. iModIntro.
+    wp_seq.
+    iInv (nroot.@"foo") as "Hr" "cl".
+    wp_load.
+    iMod ("cl" with "[Hr]") as "_"; first done. iModIntro.
+    by iApply "HΦ".
+  Qed.
+
 End Recursion.
