@@ -2,6 +2,7 @@ From iris.program_logic Require Export weakestpre.
 From iris.heap_lang Require Export notation lang.
 From iris.proofmode Require Export tactics.
 From iris.heap_lang Require Import proofmode.
+From iris.base_logic.lib Require Export invariants.
 Set Default Proof Using "Type".
 
 Section GhostStateSimple.
@@ -92,6 +93,73 @@ Section GhostStateSimple.
     iDestruct "HV" as %HV.
     iPureIntro.
     exact HV.
+  Qed.
+
+  Lemma incRA_S_F_update: S ~~> F.
+  Proof.
+    (* apply cmra_discrete_update. *)
+    admit.
+  Admitted.
+
+  Definition inc_invariant N γ (l : loc) (n : Z) : iProp Σ := inv N (∃(k:Z), l ↦ #k ∗ ((own γ S ∧ ⌜k >= n⌝) ∨ (own γ F ∧ ⌜k >= n + 1⌝)))%I.
+
+  Definition prog_inc (l : loc) : expr :=
+    #l <- !#l + #1.
+
+  Lemma prog_inc_wp N γ l n:
+    inc_invariant N γ l n -∗ {{{ ⌜True ⌝}}} prog_inc l {{{ v, RET v; own γ F }}}.
+  Proof.
+    iIntros "#Hinv".
+    iIntros (Φ). iModIntro.
+    iIntros "_ HΦ".
+    rewrite /prog_inc.
+    (* open the invariant to read from the location *)
+    wp_bind (! _)%E.
+    iInv N as "Hl" "cl".
+    iMod "Hl".
+    iDestruct "Hl" as (k) "(Hl & Hghost)".
+    iAssert (⌜k >= n⌝)%I as "%".
+    { iDestruct "Hghost" as "[[Htok Hbound]|[Htok Hbound]]";
+        iDestruct "Hbound" as %Hbound; (* Coq hung here if I used "%" *)
+        iPureIntro;
+        omega. }
+    wp_load.
+    (* now close the invariant again after the read *)
+    iMod ("cl" with "[Hl Hghost]") as "_".
+    (* re-establish the invariant, easy because we have only read from
+    the location at this point *)
+    { iModIntro. iExists k. iFrame. }
+    iModIntro.
+    wp_op.
+    (* open the invariant again to write to the location *)
+    iInv N as "Hl" "cl".
+    iMod "Hl".
+    iDestruct "Hl" as (k') "(Hl & Hghost)".
+    wp_store.
+    assert (k + 1 >= n + 1) by omega.
+    iDestruct "Hghost" as "[[Htok _]|[Htok _]]".
+    - (* own S *)
+      (* this is where we perform the frame preserving update from S
+         to F, which we are allowed to do (?) because of the update
+         modality in the goal *)
+      iMod (own_update γ S F with "[$Htok]") as "Htok".
+      (* show that this update is frame-preserving *)
+      { apply incRA_S_F_update. }
+      (* we now have the desired own F token! Since it is duplicable,
+      we can make a copy of it to close the invariant, and another
+      copy to pass around. *)
+      iPoseProof (incRA_F_duplicable with "[$Htok]") as "[Htok1 Htok2]".
+      (* close the invariant using Htok2 *)
+      iMod ("cl" with "[Hl Htok2]") as "_".
+      { iModIntro. iExists (k + 1). iFrame. auto. }
+      iModIntro.
+      iApply ("HΦ" with "[$Htok1]").
+    - (* own F: no need to do a frame preserving update since we can
+      just duplicate our token. *)
+      iPoseProof (incRA_F_duplicable with "[$Htok]") as "[Htok1 Htok2]".
+      iMod ("cl" with "[Hl Htok2]") as "_".
+      { iModIntro. iExists (k + 1). iFrame. auto. }
+      iApply ("HΦ" with "[$Htok1]").
   Qed.
 
 End GhostStateSimple.
