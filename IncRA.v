@@ -75,19 +75,10 @@ Section IncRA.
     iExact "HF".
   Qed.
 
-  Lemma incRA_S_unique γ: own γ S ∗ own γ S -∗ ⌜False⌝.
-  Proof.
-    iIntros "HS".
-    rewrite -own_op.
-    iDestruct (own_valid with "HS") as "HV".
-    iDestruct "HV" as %HV.
-    iPureIntro.
-    exact HV.
-  Qed.
-
-  Lemma incRA_S_F_incompatible γ: own γ S ∗ own γ F -∗ ⌜False⌝.
+  Lemma incRA_S_F_incompatible γ Φ: own γ S ∗ own γ F -∗ Φ.
   Proof.
     iIntros "HR".
+    iExFalso.
     rewrite -own_op.
     iDestruct (own_valid with "HR") as "HV".
     iDestruct "HV" as %HV.

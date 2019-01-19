@@ -95,7 +95,6 @@ Section GhostStateSimple.
     rewrite /inc_invariant.
     iDestruct "Hl" as (k) "[Hl [[Htok1 Hbound]|[Htok2 Hbound]]]".
     - (* own S and own F are incompatible, hence we cannot be in this case *)
-      iExFalso.
       iApply (incRA_S_F_incompatible with "[$Htok1 $Htok]").
     - (* Here we have the desired bound due to the case of the invariant we are in *)
       iDestruct "Hbound" as "%".

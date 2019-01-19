@@ -48,12 +48,12 @@ Section GhostStateFrac.
     inv N (inc_invariant γ1 γ2 n l) -∗ {{{ own γ2 half }}} prog_inc l {{{ v, RET v; own γ1 F }}}.
   Proof.
     iIntros "#Hinv".
-    iIntros (Φ). iModIntro. (* why is this box there all of a sudden *)
+    iIntros (Φ) "!>". (* why is this box there all of a sudden *)
     iIntros "Hhalf HΦ".
     rewrite /prog_inc.
     (* open the invariant for reading *)
     wp_bind (! _)%E.
-    iInv "Hinv" as "Hl" "cl". iMod "Hl". rewrite /inc_invariant.
+    iInv "Hinv" as ">Hl" "cl". rewrite /inc_invariant.
 
     iDestruct "Hl" as "[Htok|[Htok|Htok]]";
       iDestruct "Htok" as "[Hl Htok]";
@@ -64,7 +64,7 @@ Section GhostStateFrac.
       { iModIntro. iCombine "Hl" "Htok" as "Htok". auto. }
       iModIntro. wp_op.
       (* open the invariant for writing *)
-      iInv "Hinv" as "Hl" "cl". iMod "Hl".
+      iInv "Hinv" as ">Hl" "cl".
 
       iDestruct "Hl" as "[Htok|[Htok|Htok]]";
         iDestruct "Htok" as "[Hl Htok]";
@@ -89,28 +89,30 @@ Section GhostStateFrac.
       + iApply (half_one_impossible with "[$Hhalf $Htok2]").
 
     - wp_load. (* reading n + 1 *)
-      iMod ("cl" with "[Hl Htok1 Htok2]") as "_".
+      (* make a copy of the F, because we will need it later *)
+      iDestruct (incRA_F_duplicable with "Htok1") as "[HtokF1 HtokF2]".
+      iMod ("cl" with "[Hl HtokF2 Htok2]") as "_".
       { iModIntro. iRight. iLeft. iFrame. }
       iModIntro. wp_op.
       (* open the invariant for writing *)
-      iInv "Hinv" as "Hl" "cl". iMod "Hl".
+      iInv "Hinv" as ">Hl" "cl".
 
       iDestruct "Hl" as "[Htok|[Htok|Htok]]";
         iDestruct "Htok" as "[Hl Htok]";
         try iDestruct "Htok" as "[Htok1 Htok2]".
 
-      + admit.
+      + iApply (incRA_S_F_incompatible with "[$Htok $HtokF1]").
 
       + wp_store.
-        iDestruct (incRA_F_duplicable with "Htok1") as "[HtokF1 HtokF2]".
         iCombine "Hhalf" "Htok2" as "Htok".
         replace (n + 1 + 1)%Z with (n + 2)%Z by omega.
-        iMod ("cl" with "[Hl Htok HtokF2]") as "_".
+        iMod ("cl" with "[Hl Htok HtokF1]") as "_".
         { iModIntro. iRight. iRight. iFrame. }
         iModIntro. iApply "HΦ". by iFrame.
 
       + iApply (half_one_impossible with "[$Hhalf $Htok2]").
 
     - (* reading n + 2, impossible *) iApply (half_one_impossible with "[$Hhalf $Htok2]").
-  Admitted.
+  Qed.
+
 End GhostStateFrac.
