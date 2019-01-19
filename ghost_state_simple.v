@@ -97,10 +97,15 @@ Section GhostStateSimple.
 
   Lemma incRA_S_F_update: S ~~> F.
   Proof.
-    (* the following tactic only works for total RAs, and my RA is not
-    total. *)
-    (* apply cmra_discrete_update. *)
-  Admitted.
+    intros n mz H.
+    destruct mz.
+    - rewrite /opM. simpl.
+      rewrite <-cmra_discrete_valid_iff.
+      rewrite /opM in H.
+      rewrite <-cmra_discrete_valid_iff in H.
+      destruct c; naive_solver.
+    - simpl. rewrite <-cmra_discrete_valid_iff. done.
+  Qed.
 
   Definition inc_invariant γ (l : loc) (n : Z) : iProp Σ := (∃(k:Z), l ↦ #k ∗ ((own γ S ∧ ⌜k >= n⌝) ∨ (own γ F ∧ ⌜k >= n + 1⌝)))%I.
 
