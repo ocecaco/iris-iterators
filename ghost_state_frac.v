@@ -75,6 +75,7 @@ Section GhostStateFrac.
         iMod (own_update γ1 S F with "[$Htok]") as "Htok".
         { apply incRA_S_F_update. }
         iDestruct (incRA_F_duplicable with "Htok") as "[Htok Htok2]".
+        (* here we are spending our half *)
         iMod ("cl" with "[Hl Htok2 Hhalf]") as "_".
         { iModIntro. iRight. iLeft. iFrame. }
         by iApply "HΦ".
@@ -104,6 +105,9 @@ Section GhostStateFrac.
       + iApply (incRA_S_F_incompatible with "[$Htok $HtokF1]").
 
       + wp_store.
+        (* here we get a half from the environment, and we combine it
+        with our half, thereby spending it when we re-establish the
+        invariant *)
         iCombine "Hhalf" "Htok2" as "Htok".
         replace (n + 1 + 1)%Z with (n + 2)%Z by omega.
         iMod ("cl" with "[Hl Htok HtokF1]") as "_".
