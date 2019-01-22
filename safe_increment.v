@@ -4,18 +4,18 @@ From iris.proofmode Require Export tactics.
 From iris.heap_lang Require Import proofmode.
 From iris.heap_lang.lib Require Import par.
 From iris.base_logic.lib Require Export invariants.
-From iris.algebra Require Export frac.
-Require Export IncRA.
+From iris.algebra Require Import frac_auth.
+From iris.algebra Require Export cmra.
 Set Default Proof Using "Type".
 
 Section SafeIncrement.
-  Class fracG Σ := FracG { fracG_inG :> inG Σ fracR }.
-  Definition fracΣ : gFunctors := #[GFunctor fracR].
+  Class myG Σ := MyG { myG_inG :> inG Σ (frac_authR natR) }.
+  Definition myΣ : gFunctors := #[GFunctor (frac_authR natR)].
 
-  Instance subG_fracΣ {Σ} : subG fracΣ Σ -> fracG Σ.
+  Instance subG_myΣ {Σ} : subG myΣ Σ -> myG Σ.
   Proof. solve_inG. Qed.
 
-  Context `{!heapG Σ, !fracG Σ, !incG Σ}.
+  Context `{!heapG Σ, !myG Σ, !spawnG Σ}.
 
   Definition prog_safe_inc : val :=
     λ: "x", FAA "x" #1.
@@ -37,35 +37,79 @@ Section SafeIncrement.
     prog_safe_inc "s" ||| prog_safe_inc "s";;
     !"s".
 
-  Definition half : frac := 1/2.
-  Definition one : frac := 1.
+  Definition counter_inv γ (l : loc) : iProp Σ :=
+    (∃k:nat, l ↦ #k ∗ own γ (●! k))%I.
 
-  Definition inc_invariant γ1 γ2 (l : loc) : iProp Σ :=
-    ((own γ1 S ∗ l ↦ #0) ∨ (own γ1 S ∗ own γ2 half ∗ l ↦ #1) ∨ (own γ1 F ∗ own γ2 one ∗ l ↦ #2))%I.
+  Definition is_counter N γ (l : loc) (q : frac) (n : nat) : iProp Σ :=
+    (own γ (◯!{q} n) ∗ inv N (counter_inv γ l))%I.
 
-  Lemma prog_safe_frac N γ1 γ2 (s : loc):
-    inv N (inc_invariant γ1 γ2 s) -∗ {{{ own γ2 half }}} prog_safe_inc #s {{{ v, RET v; own γ2 one }}}.
+  Lemma prog_safe_frac N γ (s : loc):
+    {{{ is_counter N γ s (1/2) 0 }}} prog_safe_inc #s {{{ v, RET v; own γ (◯!{1/2} 1%nat) }}}.
   Proof.
+    iIntros (Φ) "Hcounter HΦ".
+    rewrite /is_counter.
+    iDestruct "Hcounter" as "[Hfrag #Hinv]".
+    wp_lam.
+    iInv "Hinv" as ">Hauth" "cl".
+    iDestruct "Hauth" as (k) "(Hs & Htrue)".
+    wp_faa.
+    iCombine "Htrue" "Hfrag" as "Hcomb".
+    iMod (own_update γ _ ((●! (k + 1)%nat) ⋅ (◯!{1/2} 1%nat)) with "[$Hcomb]") as "Hcomb".
+    { admit. (* show that this update is frame-preserving *) }
+    rewrite own_op.
+    iDestruct "Hcomb" as "[Hauth Hfrag]".
+    iMod ("cl" with "[Hs Hauth]") as "_".
+    { iModIntro. iExists (k + 1)%nat. iFrame. admit. }
+    iModIntro. iApply "HΦ". iFrame.
   Admitted.
 
-  Lemma prog_safe_inc_par_wp (l : loc):
+  Lemma prog_safe_inc_par_wp:
     {{{ ⌜True⌝ }}} prog_inc_par {{{ v, RET v; ⌜v = #2⌝ }}}.
   Proof.
     iIntros (Φ) "_ HΦ".
     rewrite /prog_inc_par.
     wp_alloc s as "Hs".
-    iMod (own_alloc S) as (γ1) "Htok1"; first split.
-    iMod (own_alloc one) as (γ2) "Htok2"; first admit.
-    iMod (inv_alloc (nroot.@"client") _ (inc_invariant γ1 γ2 s) with "[Htok1 Hs]") as "#Hinv".
-    { iModIntro. rewrite /inc_invariant. iLeft. iFrame. }
-    iAssert (own γ2 half ∗ own γ2 half)%I with "[Htok2]" as "[Htok2_a Htok2_b]".
-    { iApply own_op. admit. }
     wp_let.
     wp_bind (_ ||| _)%E.
-    iPoseProof (prog_safe_frac with "Hinv") as "Hbranch".
-    iApply (wp_par _ _ _ _ Φ with "[Htok2_a] [Htok2_b]").
-    - wp_apply ("Hbranch" with "[$Htok2_a]"). admit.
-    - wp_apply ("Hbranch" with "[$Htok2_b]"). admit.
+    iMod (own_alloc (●! 0%nat ⋅ ◯! 0%nat)) as (γ) "[Hauth Hfrag]".
+    { admit. (* show that ghost state is valid *) }
+    iAssert (own γ (◯!{1/2} 0%nat) ∗ own γ (◯!{1/2} 0%nat))%I with "[Hfrag]" as "[Hfrag1 Hfrag2]".
+    { admit. (* split the fragment *) }
+    iMod (inv_alloc (nroot.@"par") _ (counter_inv γ s) with "[Hs Hauth]") as "#Hinv".
+    { iModIntro. rewrite /counter_inv. iExists 0%nat. iFrame. }
+    iApply (wp_par
+              (fun v => own γ (◯!{1/2} 1%nat))
+              (fun v => own γ (◯!{1/2} 1%nat))
+              with "[Hfrag1] [Hfrag2]").
+    - iAssert (is_counter _ _ _ _ _)%I with "[Hinv Hfrag1]" as "Hcounter".
+      rewrite /is_counter. iSplitL "Hfrag1". iAssumption. iAssumption.
+      wp_apply (prog_safe_frac with "[$Hcounter]").
+      iIntros (v) "Hfrag". iExact "Hfrag".
+    - admit. (* similar to previous *)
+    - iIntros (v1 v2) "[Hfrag1 Hfrag2]".
+      iCombine "Hfrag1" "Hfrag2" as "Hfrag".
+      replace (1 + 1)%nat with 2%nat by admit.
+      iModIntro.
+      wp_seq.
+      iInv "Hinv" as ">Hauth" "cl".
+      rewrite /counter_inv.
+      iDestruct "Hauth" as (k) "[Hs Htrue]".
+      iCombine "Htrue" "Hfrag" as "Hcomb".
+      iAssert (⌜k = 2%nat⌝)%I as "%".
+      + iAssert (✓ (●! k ⋅ ◯! 2%nat))%I as "%".
+        { iApply own_valid. iExact "Hcomb". }
+        iPureIntro.
+        apply frac_auth_agree in H.
+        done.
+      + subst.
+        wp_load.
+        iMod ("cl" with "[Hs Hcomb]") as "_".
+        { iModIntro. iExists 2%nat. iFrame.
+          iDestruct "Hcomb" as "[Hauth Hfrag]".
+          iFrame. }
+        iModIntro.
+        iApply "HΦ".
+        done.
   Admitted.
 
 End SafeIncrement.
