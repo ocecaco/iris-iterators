@@ -5,10 +5,10 @@ From iris.heap_lang Require Import proofmode notation.
 Set Default Proof Using "Type".
 
 (* different from the other is_list from foldr.v *)
-Fixpoint is_list `{!heapG Σ} (v : val) (Ψs : list (val -> iProp Σ)) : iProp Σ :=
-  match Ψs with
-  | [] => ⌜v = InjLV #()⌝
-  | Ψ :: Ψs' => ∃(lh : loc) (x vt : val), ⌜v = InjRV #lh⌝ ∗ lh ↦ (x, vt) ∗ Ψ x ∗ is_list vt Ψs'
+Fixpoint is_list `{!heapG Σ} {A} (res : A -> val -> iProp Σ) (xs : list A) (vs : val) : iProp Σ :=
+  match xs with
+  | [] => ⌜vs = InjLV #()⌝
+  | x :: xs' => ∃(lh : loc) (v vs' : val), ⌜vs = InjRV #lh⌝ ∗ lh ↦ (v, vs') ∗ res x v ∗ is_list res xs' vs'
 end%I.
 
 Section MutatingMap.
@@ -17,48 +17,51 @@ Section MutatingMap.
   Definition prog_for_each : val :=
     rec: "for_each" "f" "xs" :=
       match: "xs" with
-        InjL "unit" => Skip
+        InjL <> => Skip
       | InjR "cons" => "f" (Fst !"cons");; "for_each" "f" (Snd !"cons")
       end.
 
-  Lemma prog_for_each_loop_wp
-        (v : val)
-        (Ψs : list ((val -> iProp Σ) * (val -> iProp Σ)))
-        (I : list (val -> iProp Σ) -> iProp Σ)
-        (past : list (val -> iProp Σ))
-        (f : val):
-    {{{ is_list v (map fst Ψs)
+  Lemma prog_for_each_loop_wp {A}
+        (past : list A)
+        (res : A -> val -> iProp Σ)
+        (I : list A -> iProp Σ)
+        (f_coq : A -> A)
+        (f : val)
+        (xs : list A)
+        (vs : val):
+    {{{ is_list res xs vs
       ∗ I past
-      ∗ [∗ list] P ∈ Ψs, (∀ x xs, {{{ P.1 x ∗ I xs }}} f x {{{ RET #(); P.2 x ∗ I (xs ++ [P.2]) }}})
+      (* the invariant needs to be stated in terms of the old list,
+      and not the new one, because f_coq might not have an inverse. Of
+      course we could also give both the old and the new values, but
+      that would be redundant since x' = f_coq x. *)
+      ∗ (∀ y ys vy, {{{ res y vy ∗ I ys }}} f vy {{{ RET #(); res (f_coq y) vy ∗ I (ys ++ [y]) }}})
     }}}
-      prog_for_each f v
-    {{{ RET #(); is_list v (map snd Ψs) ∗ I (past ++ map snd Ψs) }}}.
+      prog_for_each f vs
+    {{{ RET #(); is_list res (f_coq <$> xs) vs ∗ I (past ++ xs) }}}.
   Proof.
-    iIntros (Φ) "(Hv & HI & Hf) HΦ".
-    iInduction Ψs as [|P Ψs'] "IH" forall (v Φ past); simpl.
-    - iDestruct "Hv" as "%"; subst.
-      wp_rec. wp_pures.
+    iIntros (Φ) "(Hxs & HI & #Hf) HΦ".
+    iInduction xs as [|x xs'] "IH" forall (past vs Φ); simpl; wp_rec; wp_let.
+    - iDestruct "Hxs" as "%"; subst. wp_pures.
       iApply "HΦ".
       rewrite app_nil_r.
       by iFrame.
-    - iDestruct "Hv" as (lh x vt ->) "(Hlh & HP1 & Hvt)".
-      iDestruct "Hf" as "[Hf0 Hfr]".
-      wp_rec. wp_pures. wp_load. wp_pures.
-      iSpecialize ("Hf0" $! x past).
-      wp_apply ("Hf0" with "[$HP1 $HI]").
-      iIntros "[HP2 HI]".
+    - iDestruct "Hxs" as (lh v vs' ->) "(Hlh & Hres & Hxs')".
+      wp_pures. wp_load. wp_proj.
+      wp_apply ("Hf" $! x past v with "[$HI $Hres]").
+      iIntros "[Hres HI]".
       wp_seq. wp_load. wp_proj.
-      iSpecialize ("IH" $! vt Φ (past ++ [P.2]) with "Hvt HI Hfr").
-      wp_apply "IH".
-      iIntros "[Hvt HI]".
+      wp_apply ("IH" with "Hxs' HI").
+      iIntros "[Hfxs HI]".
       iApply "HΦ".
-      replace ((past ++ [P.2]) ++ map snd Ψs') with (past ++ P.2 :: map snd Ψs').
-      + iFrame.
-        iExists lh, x, vt. by iFrame.
-      + rewrite app_assoc_reverse. simpl. done.
+      rewrite <- app_assoc.
+      simpl.
+      iFrame.
+      iExists lh, v, vs'.
+      by iFrame.
   Qed.
 
-  Definition prog_for_each_wp v Ψs I f := prog_for_each_loop_wp v Ψs I [] f.
+  Definition prog_for_each_wp {A} := @prog_for_each_loop_wp A [].
 
 End MutatingMap.
 
