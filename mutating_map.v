@@ -4,7 +4,7 @@ From iris.proofmode Require Export tactics.
 From iris.heap_lang Require Import proofmode notation.
 Set Default Proof Using "Type".
 
-(* different from the other is_list from foldr.v *)
+(* notice that is_list itself is of the form A -> val -> iProp for some A! *)
 Fixpoint is_list `{!heapG Σ} {A} (res : A -> val -> iProp Σ) (xs : list A) (vs : val) : iProp Σ :=
   match xs with
   | [] => ⌜vs = InjLV #()⌝
@@ -26,8 +26,8 @@ Section MutatingMap.
         (res : A -> val -> iProp Σ)
         (I : list A -> iProp Σ)
         (f_coq : A -> A)
-        (f : val)
         (xs : list A)
+        (f : val)
         (vs : val):
     {{{ is_list res xs vs
       ∗ I past
@@ -81,73 +81,51 @@ Section SumExample.
   Definition num_to_ref (x : Z) (v : val) : iProp Σ :=
     (∃(l : loc), ⌜v = #l⌝ ∗ l ↦ #x)%I.
 
-  Definition nums_to_refs (xs : list Z) : list (val -> iProp Σ) :=
-    map num_to_ref xs.
+  Definition add_one (x : Z) : Z := x + 1.
 
-  Definition before_after (xs : list Z) : list ((val -> iProp Σ) * (val -> iProp Σ)) :=
-    map (fun x => (num_to_ref x, num_to_ref (x + 1))) xs.
+  Definition sum (xs : list Z) : Z := fold_right Z.add 0 xs.
 
-  Definition sum_invariant (ls : loc) (n : Z) (Ps : list (val -> iProp Σ)) : iProp Σ :=
-    (∃(values : list ((val -> iProp Σ) * (loc * Z))),
-        ⌜map fst values = Ps⌝
-      ∗ ls ↦ #(fold_right Z.add 0 (map (snd ∘ snd) values) + n)
-      ∗ [∗ list] cell ∈ values, cell.2.1 ↦ #(cell.2.2 + 1 : Z) ∗ cell.1 #(cell.2.1 : loc)
-      )%I.
+  Definition sum_invariant (ls : loc) (n : Z) (xs : list Z) : iProp Σ :=
+    (ls ↦ #(sum xs + n))%I.
+
+  Lemma foldr_sum x xs:
+    foldr Z.add x xs = x + foldr Z.add 0 xs.
+  Proof.
+    induction xs as [|x' xs'].
+    - simpl. omega.
+    - simpl. rewrite IHxs'. omega.
+  Qed.
 
   Lemma prog_sum_loop_wp (ls : loc) (n : Z) (v : val) (xs : list Z):
-    {{{ is_list v (map fst (before_after xs)) ∗ ls ↦ #n }}}
+    {{{ is_list num_to_ref xs v ∗ ls ↦ #n }}}
       prog_sum_loop #ls v
-    {{{ RET #(); is_list v (map snd (before_after xs)) ∗ ls ↦ #(fold_right Z.add 0 xs + n) }}}.
+    {{{ RET #(); is_list num_to_ref (add_one <$> xs) v ∗ ls ↦ #(sum xs + n) }}}.
   Proof.
     iIntros (Φ) "[Hv Hls] HΦ".
     wp_rec; wp_pures. wp_lam. wp_pures.
+    iAssert (sum_invariant ls n []) with "[Hls]" as "Hls".
+    { rewrite /sum_invariant. simpl. by replace (0 + n)%Z with n%Z by omega. }
     wp_apply (prog_for_each_wp
-                v
-                (before_after xs)
+                num_to_ref
                 (sum_invariant ls n)
-                _
-                with "[$Hv Hls]").
-    - admit.
-    - iIntros "[Hv Hinv]".
-      iApply "HΦ". iFrame.
-      rewrite /sum_invariant.
-      iDestruct "Hinv" as (values) "(HPs & Hls & Hlink)".
-      iInduction xs as [|k xs'] "IH" forall (values); simpl.
-      + iDestruct "HPs" as "%". apply map_eq_nil in H; subst; simpl. done.
-      + destruct values.
-        (* empty list is impossible at this point *)
-        { simpl. iDestruct "HPs" as "%". discriminate. }
-        destruct p as [Ψ [lx x]].
-        simpl.
-        iDestruct "HPs" as %H. inversion H; subst.
-        rewrite /num_to_ref.
-        iDestruct "Hlink" as "[[Hlx Hk] Hrest]".
-        iDestruct "Hk" as (ly) "[Heq Hly]".
-        iDestruct "Heq" as %Heq. inversion Heq; subst.
-        iDestruct "Hlx" as "[Hlx1 Hlx2]".
-        iDestruct "Hly" as "[Hly1 Hly2]".
-        iAssert (⌜x = k⌝)%I with "[Hlx1 Hly1]" as "Hxk".
-        admit.
-  Admitted.
-
-  (* Idea: you should not be able to assume that the list will be
-  processed in any particular order in the mapping function that is
-  supplied as the argument. *)
-  Lemma prog_sum_wp (v : val) (xs : list Z):
-    {{{ is_list v (map fst (before_after xs)) }}}
-      prog_sum v
-    {{{ r, RET r; is_list v (map snd (before_after xs)) ∗ ⌜r = #(fold_right Z.add 0 xs)⌝ }}}.
-  Proof.
-    iIntros (Φ) "Hv HΦ".
-    wp_rec. wp_alloc ls as "Hs". wp_pures.
-    wp_apply (prog_sum_loop_wp ls 0 v xs with "[$Hv $Hs]").
-    iIntros "[Hv Hls]".
-    wp_seq.
-    wp_load.
-    iApply "HΦ".
-    iFrame.
-    rewrite Z.add_0_r.
-    done.
+                add_one
+                xs
+                with "[$Hv $Hls]").
+    - (* prove Hoare triple about f *)
+      iIntros (y ys vy Φ'). iModIntro.
+      iIntros "[Hy Hinv] HΦ'".
+      wp_pures.
+      rewrite /sum_invariant /num_to_ref.
+      iDestruct "Hy" as (ly ->) "Hly".
+      wp_load. wp_load. wp_op. wp_store.
+      wp_load. wp_op. wp_store. iApply "HΦ'".
+      iSplitL "Hly".
+      + iExists ly. rewrite /add_one. by iFrame.
+      + rewrite /sum. rewrite foldr_app. simpl.
+        replace (y + 0)%Z with y%Z by omega.
+        rewrite (foldr_sum y ys).
+        by replace (foldr Z.add 0 ys + n + y) with (y + foldr Z.add 0 ys + n) by omega.
+    - iFrame.
   Qed.
 
 End SumExample.
