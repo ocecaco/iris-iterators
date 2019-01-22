@@ -128,4 +128,19 @@ Section SumExample.
     - iFrame.
   Qed.
 
+  Lemma prog_sum_wp (v : val) (xs : list Z):
+    {{{ is_list num_to_ref xs v }}}
+      prog_sum v
+    {{{ s, RET s; is_list num_to_ref (add_one <$> xs) v ∗ ⌜s = #(sum xs)⌝}}}.
+  Proof.
+    iIntros (Φ) "Hxs HΦ".
+    wp_lam. wp_alloc s as "Hs". wp_let.
+    wp_apply (prog_sum_loop_wp with "[$Hxs $Hs]").
+    iIntros "[Hxs Hs]".
+    wp_seq. wp_load.
+    iApply "HΦ".
+    iFrame.
+    iPureIntro. by replace (sum xs + 0) with (sum xs) by omega.
+  Qed.
+
 End SumExample.
