@@ -11,50 +11,6 @@ Fixpoint is_list `{!heapG Σ} (v : val) (Ψs : list (val -> iProp Σ)) : iProp �
   | Ψ :: Ψs' => ∃(lh : loc) (x vt : val), ⌜v = InjRV #lh⌝ ∗ lh ↦ (x, vt) ∗ Ψ x ∗ is_list vt Ψs'
 end%I.
 
-Section MyTests.
-  Context `{heapG Σ}.
-
-  Definition prog_mktestlist : val := λ: "unit",
-                                      let: "x" := ref #3 in
-                                      let: "cons" := ref ("x", InjL #()) in
-                                      InjR "cons".
-
-  Definition points_to_three (v : val) : iProp Σ :=
-    (∃(l : loc), ⌜v = #l⌝ ∗ l ↦ #3)%I.
-
-  Lemma prog_mktestlist_wp:
-    WP prog_mktestlist #() {{ v, is_list v [points_to_three] }}%I.
-  Proof.
-    wp_rec. wp_pures.
-    wp_alloc lc1 as "H1". wp_pures.
-    wp_alloc lc2 as "H2". wp_pures.
-    rewrite /is_list /points_to_three.
-    iExists lc2, #lc1, (InjLV #()).
-    iFrame.
-    iSplitR. done.
-    iSplitL. iExists lc1. iFrame. done.
-    done.
-  Qed.
-
-  Definition closure_test : expr :=
-    let: "s" := ref #0 in
-    let: "f" := λ: "x", "s" <- !"s" + "x" in
-    "f" #1;; !"s".
-
-  Lemma closure_test_wp:
-    WP closure_test {{ v, ⌜v = #1⌝ }}%I.
-  Proof.
-    iIntros "".
-    rewrite /closure_test.
-    wp_alloc ls as "Hs".
-    by repeat (wp_load || wp_store || wp_pure _).
-  Qed.
-
-  Definition test_preds (ls : loc) : list ((val -> iProp Σ) * (val -> iProp Σ)) :=
-    [(fun v => (⌜v = #ls⌝ ∗ ls ↦ #2)%I, fun v => (⌜v = #ls⌝ ∗ ls ↦ #3)%I)].
-
-End MyTests.
-
 Section MutatingMap.
   Context `{heapG Σ}.
 
