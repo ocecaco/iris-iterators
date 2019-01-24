@@ -93,23 +93,22 @@ Section SumExample.
 
   Record rich_num := mkRichNum
                        { value : nat
-                         ; ghost_name : gname
                          ; fraction : frac
                          ; bound : nat
                        }.
 
   (* this is a reference to a number that also holds a fragment of an
   authoritative RA *)
-  Definition is_rich_num_ref (x : rich_num) (v : val) : iProp Σ :=
+  Definition is_rich_num_ref (γ : gname) (x : rich_num) (v : val) : iProp Σ :=
     match x with
-      {| value := n; ghost_name := γ; fraction := q; bound := k |} => is_num_ref n v ∗ own γ (◯!{q} k)
+      {| value := n; fraction := q; bound := k |} => is_num_ref n v ∗ own γ (◯!{q} k)
     end%I.
 
   Definition add_one (x : nat) : nat := x + 1.
 
   Definition rich_add_one (x : rich_num) : rich_num :=
     match x with
-      {| value := n; ghost_name := γ; fraction := q; bound := k |} => mkRichNum (n + 1) γ q (n + k)
+      {| value := n; fraction := q; bound := k |} => mkRichNum (n + 1) q (n + k)
     end.
 
   Definition sum (xs : list nat) : nat := fold_right Nat.add 0%nat xs.
@@ -122,14 +121,14 @@ Section SumExample.
   (*   - simpl. rewrite IHxs'. omega. *)
   (* Qed. *)
 
-  Fixpoint divide_fragments (γ : gname) (fraction : frac) (bound : nat) (xs : list nat) : list rich_num :=
+  Fixpoint divide_fragments  (fraction : frac) (bound : nat) (xs : list nat) : list rich_num :=
     match xs with
     | [] => []
-    | x :: xs' => mkRichNum x γ (fraction / 2) bound :: divide_fragments γ (fraction / 2) bound xs'
+    | x :: xs' => mkRichNum x (fraction / 2) bound :: divide_fragments (fraction / 2) bound xs'
     end.
 
   Lemma enrich_list γ q k xs v:
-    own γ (◯!{q} k) ∗ is_list is_num_ref xs v -∗ is_list is_rich_num_ref (divide_fragments γ q k xs) v.
+    own γ (◯!{q} k) ∗ is_list is_num_ref xs v -∗ is_list (is_rich_num_ref γ) (divide_fragments q k xs) v.
   Proof.
   Admitted.
 
@@ -155,7 +154,7 @@ Section SumExample.
       iIntros (y vy Φ'). iModIntro.
       iIntros "Hy HΦ'".
       rewrite /is_rich_num_ref.
-      destruct y as [num γ' q bound].
+      destruct y as [num q bound].
       iDestruct "Hy" as "[Hnum Hfrag]".
       wp_lam.
       rewrite /is_num_ref. iDestruct "Hnum" as (lnum ->) "Hnum".
@@ -166,7 +165,7 @@ Section SumExample.
       iDestruct "Hauth" as (k) "[Hls Htrue]".
       wp_faa.
       (* now update our ghost variables after adding *)
-      iMod (own_update γ' (●! k ⋅ ◯!{q} bound) (●! (k + num)%nat ⋅ ◯!{q} (bound + num)%nat) with "[Htrue Hfrag]") as "[Htrue Hfrag]".
+      iMod (own_update γ (●! k ⋅ ◯!{q} bound) (●! (k + num)%nat ⋅ ◯!{q} (bound + num)%nat) with "[Htrue Hfrag]") as "[Htrue Hfrag]".
       { apply frac_auth_update, (nat_local_update _ _ (k + num)%nat (bound + num)%nat). omega. }
       { rewrite own_op. iFrame. }
   Admitted.
