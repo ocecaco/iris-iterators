@@ -7,9 +7,6 @@ From iris.base_logic.lib Require Export invariants.
 From iris.algebra Require Import frac_auth.
 Set Default Proof Using "Type".
 
-(* Temporary *)
-Definition mylist
-
 (* notice that is_list itself is of the form A -> val -> iProp for some A! *)
 Fixpoint is_list `{!heapG Σ} {A} (res : A -> val -> iProp Σ) (xs : list A) (vs : val) : iProp Σ :=
   match xs with
@@ -31,6 +28,14 @@ Section MutatingMap.
         let: "rest" := Snd !"cons" in
         "f" "head" ||| "for_each" "f" "rest"
       end.
+
+  Lemma prog_for_each_empty_wp {A} (res : A -> val -> iProp Σ) (f : val) (v : val):
+    {{{ is_list res [] v }}} prog_for_each f v {{{ w, RET w; is_list res [] v }}}.
+  Proof.
+    iIntros (Φ) "Hv HΦ". iDestruct "Hv" as "%"; subst.
+    wp_lam. wp_pures. iApply "HΦ".
+    rewrite /is_list. done.
+  Qed.
 
   Lemma prog_for_each_wp {A}
         (f_coq : A -> A)
@@ -218,10 +223,8 @@ Section SumExample.
     iMod (own_alloc (●! 0%nat ⋅ ◯! 0%nat)) as (γ) "[Htrue Hfrag]"; first done.
     iMod (inv_alloc (nroot.@"sum_loop") _ (sum_invariant γ ls) with "[Hls Htrue]") as "#Hinv".
     { iModIntro. rewrite /sum_invariant. iExists 0%nat. iFrame. }
-    iAssert (is_list (is_rich_num_ref γ) (divide_fragments 1 xs) v) with "[Hxs]" as "Hrich".
-    { destruct xs as [|x xs'].
-      - done.
-      - iApply (enrich_list
+    destruct xs.
+    { simpl.
     iPoseProof (enrich_list with "[$Hfrag $Hxs]") as "Hrich".
     wp_apply (prog_for_each_wp rich_add_one with "[$Hrich]").
     - (* prove Texan triple for f, very roundabout way, but couldn't
