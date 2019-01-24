@@ -143,14 +143,14 @@ Section SumExample.
         { rewrite -own_op -frac_auth_frag_op.
           replace (q / 2 + q /2)%Qp with q%Qp.
           - done.
-          - admit. }
+          - by rewrite Qp_div_2. }
         iFrame.
         iDestruct "Hxs'" as (lh' v' vs'' ->) "(Hlh' & Hx' & Hxs'')".
         iSplitR. { done. }
         iApply ("IH" with "[Hfrag1] [Hlh' Hx' Hxs'']").
         { auto. }
         { iExists lh', v', vs''. by iFrame. }
-  Admitted.
+  Qed.
 
   Lemma derich_list (γ : gname) (xs : list nat) (vs : val) (q : frac):
     (⌜xs ≠ []⌝ ∗ is_list (is_rich_num_ref γ) (rich_add_one <$> divide_fragments q xs) vs
