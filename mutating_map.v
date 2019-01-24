@@ -140,7 +140,10 @@ Section SumExample.
       + iExists lh, v, vs'. by iFrame.
       + iExists lh, v, vs'.
         iAssert (own γ (◯!{q/2} 0%nat) ∗ own γ (◯!{q/2} 0%nat))%I with "[Hfrag]" as "[Hfrag1 Hfrag2]".
-        { rewrite -own_op -frac_auth_frag_op. admit. }
+        { rewrite -own_op -frac_auth_frag_op.
+          replace (q / 2 + q /2)%Qp with q%Qp.
+          - done.
+          - admit. }
         iFrame.
         iDestruct "Hxs'" as (lh' v' vs'' ->) "(Hlh' & Hx' & Hxs'')".
         iSplitR. { done. }
@@ -167,11 +170,11 @@ Section SumExample.
         { iPureIntro. intros Hfoo. inversion Hfoo. }
         iDestruct ("IH" with "Hone' Hvs'") as "[IH' Hfrag']".
         iCombine "Hfrag" "Hfrag'" as "Hfrag".
-        replace (x + 0 + (n + sum xs'))%nat with (x + (n + sum xs'))%nat by admit.
+        replace (x + 0 + (n + sum xs'))%nat with (x + (n + sum xs'))%nat. 2: { rewrite <- (plus_n_O x). reflexivity. }
         iFrame.
         iExists lh, v, vs'.
         by iFrame.
-  Admitted.
+  Qed.
 
   Definition sum_invariant γ (l : loc) : iProp Σ :=
     (∃k:nat, l ↦ #k ∗ own γ (●! k))%I.
@@ -203,16 +206,17 @@ Section SumExample.
     { apply frac_auth_update, (nat_local_update _ _ (k + num)%nat (bound + num)%nat). omega. }
     { rewrite own_op. iFrame. }
     iMod ("cl" with "[Hls Htrue]") as "_".
-    { iModIntro. iExists (k + num)%nat. iFrame. admit. (* nat and Z mismatch *) }
+    { iModIntro. iExists (k + num)%nat. iFrame.
+      by rewrite Nat2Z.inj_add. }
     iModIntro.
     wp_seq.
     wp_load. wp_op. wp_store. iApply "HΦ".
     iSplitR "Hfrag".
     + iExists lnum. iSplitR.
       * done.
-      * admit. (* nat and Z mismatch *)
-    + admit. (* nat and Z mismatch *)
-  Admitted.
+      * by rewrite Nat2Z.inj_add.
+    + by rewrite plus_comm.
+  Qed.
 
   Lemma prog_sum_loop_wp (ls : loc) (v : val) (xs : list nat):
     {{{ is_list is_num_ref xs v ∗ ls ↦ #0 }}}
@@ -255,7 +259,7 @@ Section SumExample.
       iAssert (⌜k = (sum (n :: xs))%nat⌝)%I as "%".
       { rewrite own_valid. iDestruct "Hauth" as "%". iPureIntro.
         apply frac_auth_agreeL.
-        admit. (* nat vs Z *) }
+        exact H. }
       subst.
       iDestruct "Hauth" as "[Htrue Hfrag]".
       wp_load.
@@ -263,7 +267,7 @@ Section SumExample.
       { iModIntro. iExists (sum (n :: xs))%nat. iFrame. }
       iModIntro. iApply "HΦ".
       iFrame.
-  Admitted.
+  Qed.
 
   Lemma prog_sum_wp (v : val) (xs : list nat):
     {{{ is_list is_num_ref xs v }}}
