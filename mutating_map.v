@@ -2,6 +2,9 @@ From iris.program_logic Require Export weakestpre total_weakestpre.
 From iris.heap_lang Require Export lang.
 From iris.proofmode Require Export tactics.
 From iris.heap_lang Require Import proofmode notation.
+From iris.heap_lang.lib Require Export par.
+From iris.base_logic.lib Require Export invariants.
+From iris.algebra Require Import frac_auth.
 Set Default Proof Using "Type".
 
 (* notice that is_list itself is of the form A -> val -> iProp for some A! *)
@@ -12,126 +15,128 @@ Fixpoint is_list `{!heapG Σ} {A} (res : A -> val -> iProp Σ) (xs : list A) (vs
 end%I.
 
 Section MutatingMap.
-  Context `{heapG Σ}.
+  Local Set Default Proof Using "Type*".
+
+  Context `{heapG Σ, spawnG Σ}.
 
   Definition prog_for_each : val :=
     rec: "for_each" "f" "xs" :=
       match: "xs" with
         InjL <> => Skip
-      | InjR "cons" => "f" (Fst !"cons");; "for_each" "f" (Snd !"cons")
+      | InjR "cons" =>
+        let: "head" := Fst !"cons" in
+        let: "rest" := Snd !"cons" in
+        "f" "head" ||| "for_each" "f" "rest"
       end.
 
-  Lemma prog_for_each_loop_wp {A}
-        (past : list A)
+  Lemma prog_for_each_wp {A}
         (res : A -> val -> iProp Σ)
-        (I : list A -> iProp Σ)
         (f_coq : A -> A)
         (xs : list A)
         (f : val)
         (vs : val):
     {{{ is_list res xs vs
-      ∗ I past
-      (* the invariant needs to be stated in terms of the old list,
-      and not the new one, because f_coq might not have an inverse. Of
-      course we could also give both the old and the new values, but
-      that would be redundant since x' = f_coq x. *)
-      ∗ (∀ y ys vy, {{{ res y vy ∗ I ys }}} f vy {{{ RET #(); res (f_coq y) vy ∗ I (ys ++ [y]) }}})
+      ∗ (∀ (y : A) (vy : val), {{{ res y vy }}} f vy {{{ q, RET q; res (f_coq y) vy }}})
     }}}
       prog_for_each f vs
-    {{{ RET #(); is_list res (f_coq <$> xs) vs ∗ I (past ++ xs) }}}.
+    {{{ w, RET w; is_list res (f_coq <$> xs) vs }}}.
   Proof.
-    iIntros (Φ) "(Hxs & HI & #Hf) HΦ".
-    iInduction xs as [|x xs'] "IH" forall (past vs Φ); simpl; wp_rec; wp_let.
+    iIntros (Φ) "(Hxs & #Hf) HΦ".
+    iInduction xs as [|x xs'] "IH" forall (vs Φ); simpl; wp_rec; wp_let.
     - iDestruct "Hxs" as "%"; subst. wp_pures.
       iApply "HΦ".
-      rewrite app_nil_r.
       by iFrame.
     - iDestruct "Hxs" as (lh v vs' ->) "(Hlh & Hres & Hxs')".
-      wp_pures. wp_load. wp_proj.
-      wp_apply ("Hf" $! x past v with "[$HI $Hres]").
-      iIntros "[Hres HI]".
-      wp_seq. wp_load. wp_proj.
-      wp_apply ("IH" with "Hxs' HI").
-      iIntros "[Hfxs HI]".
-      iApply "HΦ".
-      rewrite <- app_assoc.
-      simpl.
-      iFrame.
-      iExists lh, v, vs'.
-      by iFrame.
+      wp_match.
+      wp_load. wp_proj. wp_let.
+      wp_load. wp_proj. wp_let.
+      iApply (wp_par
+                (fun _ => res (f_coq x) v)%I
+                (fun _ => is_list res (f_coq <$> xs') vs')%I
+                with "[Hres] [Hxs']").
+      + (* left fork *) iApply ("Hf" with "[$Hres]").
+        iModIntro. iIntros (_) "Hres". by iFrame.
+      + (* right fork *) iSpecialize ("IH" $! vs' with "[$Hxs']").
+        iApply "IH".
+        iModIntro. iIntros (_) "Hres". iFrame.
+      + (* after join *)
+        iIntros (w1 w2) "[Hres1 Hres2]".
+        iModIntro.
+        iApply "HΦ".
+        iExists lh, v, vs'. by iFrame.
   Qed.
-
-  Definition prog_for_each_wp {A} := @prog_for_each_loop_wp A [].
 
 End MutatingMap.
 
 Section SumExample.
-  Context `{!heapG Σ}.
+  Definition myR := frac_authR natR.
 
-  Definition prog_mapper : val := λ: "s" "x", "s" <- !"s" + !"x";; "x" <- !"x" + #1.
+  Class myG Σ := MyG { myG_inG :> inG Σ myR }.
+  Definition myΣ : gFunctors := #[GFunctor myR].
+
+  Instance subG_myΣ {Σ} : subG myΣ Σ -> myG Σ.
+  Proof. solve_inG. Qed.
+
+  Context `{!heapG Σ, !spawnG Σ, !myG Σ}.
+  Local Set Default Proof Using "Type*".
+
+  Definition prog_mapper : val := λ: "s" "x", FAA "s" (!"x");; FAA "x" #1%nat.
 
   Definition prog_sum_loop : val := λ: "s" "xs",
     let: "f" := prog_mapper "s" in
     prog_for_each "f" "xs".
 
   Definition prog_sum : val := λ: "xs",
-    let: "s" := ref #0 in
+    let: "s" := ref #0%nat in
     prog_sum_loop "s" "xs";; !"s".
 
-  Definition num_to_ref (x : Z) (v : val) : iProp Σ :=
+  Definition is_num_ref (x : nat) (v : val) : iProp Σ :=
     (∃(l : loc), ⌜v = #l⌝ ∗ l ↦ #x)%I.
 
-  Definition add_one (x : Z) : Z := x + 1.
+  Record rich_num := mkRichNum
+                       { value : nat
+                         ; ghost_name : gname
+                         ; fraction : frac
+                         ; bound : nat
+                       }.
 
-  Definition sum (xs : list Z) : Z := fold_right Z.add 0 xs.
+  (* this is a reference to a number that also holds a fragment of an
+  authoritative RA *)
+  Definition is_rich_num_ref (x : rich_num) (v : val) : iProp Σ :=
+    match x with
+      {| value := n; ghost_name := γ; fraction := q; bound := k |} => is_num_ref n v ∗ own γ (◯!{q} k)
+    end%I.
 
-  Definition sum_invariant (ls : loc) (n : Z) (xs : list Z) : iProp Σ :=
-    (ls ↦ #(sum xs + n))%I.
+  Definition add_one (x : nat) : nat := x + 1.
 
-  Lemma foldr_sum x xs:
-    foldr Z.add x xs = x + foldr Z.add 0 xs.
-  Proof.
-    induction xs as [|x' xs'].
-    - simpl. omega.
-    - simpl. rewrite IHxs'. omega.
-  Qed.
+  Definition rich_add_one (x : rich_num) : rich_num :=
+    match x with
+      {| value := n; ghost_name := γ; fraction := q; bound := k |} => mkRichNum (n + 1) γ q (n + k)
+    end.
 
-  Lemma prog_sum_loop_wp (ls : loc) (n : Z) (v : val) (xs : list Z):
-    {{{ is_list num_to_ref xs v ∗ ls ↦ #n }}}
+  Definition sum (xs : list nat) : nat := fold_right Nat.add 0%nat xs.
+
+  (* Lemma foldr_sum x xs: *)
+  (*   foldr Z.add x xs = x + foldr Z.add 0 xs. *)
+  (* Proof. *)
+  (*   induction xs as [|x' xs']. *)
+  (*   - simpl. omega. *)
+  (*   - simpl. rewrite IHxs'. omega. *)
+  (* Qed. *)
+
+  Lemma prog_sum_loop_wp (ls : loc) (n : nat) (v : val) (xs : list nat):
+    {{{ is_list is_num_ref xs v ∗ ls ↦ #n }}}
       prog_sum_loop #ls v
-    {{{ RET #(); is_list num_to_ref (add_one <$> xs) v ∗ ls ↦ #(sum xs + n) }}}.
+    {{{ RET #(); is_list is_num_ref (add_one <$> xs) v ∗ ls ↦ #(sum xs + n)%nat }}}.
   Proof.
     iIntros (Φ) "[Hv Hls] HΦ".
     wp_rec; wp_pures. wp_lam. wp_pures.
-    iAssert (sum_invariant ls n []) with "[Hls]" as "Hls".
-    { rewrite /sum_invariant. simpl. by replace (0 + n)%Z with n%Z by omega. }
-    wp_apply (prog_for_each_wp
-                num_to_ref
-                (sum_invariant ls n)
-                add_one
-                xs
-                with "[$Hv $Hls]").
-    - (* prove Hoare triple about f *)
-      iIntros (y ys vy Φ'). iModIntro.
-      iIntros "[Hy Hinv] HΦ'".
-      wp_pures.
-      rewrite /sum_invariant /num_to_ref.
-      iDestruct "Hy" as (ly ->) "Hly".
-      wp_load. wp_load. wp_op. wp_store.
-      wp_load. wp_op. wp_store. iApply "HΦ'".
-      iSplitL "Hly".
-      + iExists ly. rewrite /add_one. by iFrame.
-      + rewrite /sum. rewrite foldr_app. simpl.
-        replace (y + 0)%Z with y%Z by omega.
-        rewrite (foldr_sum y ys).
-        by replace (foldr Z.add 0 ys + n + y) with (y + foldr Z.add 0 ys + n) by omega.
-    - iFrame.
-  Qed.
+  Admitted.
 
-  Lemma prog_sum_wp (v : val) (xs : list Z):
-    {{{ is_list num_to_ref xs v }}}
+  Lemma prog_sum_wp (v : val) (xs : list nat):
+    {{{ is_list is_num_ref xs v }}}
       prog_sum v
-    {{{ s, RET s; is_list num_to_ref (add_one <$> xs) v ∗ ⌜s = #(sum xs)⌝}}}.
+    {{{ s, RET s; is_list is_num_ref (add_one <$> xs) v ∗ ⌜s = #(sum xs)⌝}}}.
   Proof.
     iIntros (Φ) "Hxs HΦ".
     wp_lam. wp_alloc s as "Hs". wp_let.
@@ -140,7 +145,9 @@ Section SumExample.
     wp_seq. wp_load.
     iApply "HΦ".
     iFrame.
-    iPureIntro. by replace (sum xs + 0) with (sum xs) by omega.
+    iPureIntro.
+    rewrite -plus_n_O.
+    done.
   Qed.
 
 End SumExample.
