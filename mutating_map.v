@@ -30,8 +30,8 @@ Section MutatingMap.
       end.
 
   Lemma prog_for_each_wp {A}
-        (res : A -> val -> iProp Σ)
         (f_coq : A -> A)
+        (res : A -> val -> iProp Σ)
         (xs : list A)
         (f : val)
         (vs : val):
@@ -69,10 +69,8 @@ Section MutatingMap.
 End MutatingMap.
 
 Section SumExample.
-  Definition myR := frac_authR natR.
-
-  Class myG Σ := MyG { myG_inG :> inG Σ myR }.
-  Definition myΣ : gFunctors := #[GFunctor myR].
+  Class myG Σ := MyG { myG_inG :> inG Σ (frac_authR natR) }.
+  Definition myΣ : gFunctors := #[GFunctor (frac_authR natR)].
 
   Instance subG_myΣ {Σ} : subG myΣ Σ -> myG Σ.
   Proof. solve_inG. Qed.
@@ -80,7 +78,7 @@ Section SumExample.
   Context `{!heapG Σ, !spawnG Σ, !myG Σ}.
   Local Set Default Proof Using "Type*".
 
-  Definition prog_mapper : val := λ: "s" "x", FAA "s" (!"x");; FAA "x" #1%nat.
+  Definition prog_mapper : val := λ: "s" "x", FAA "s" (!"x");; "x" <- !"x" + #1%nat.
 
   Definition prog_sum_loop : val := λ: "s" "xs",
     let: "f" := prog_mapper "s" in
@@ -124,15 +122,56 @@ Section SumExample.
   (*   - simpl. rewrite IHxs'. omega. *)
   (* Qed. *)
 
+  Fixpoint divide_fragments (γ : gname) (fraction : frac) (bound : nat) (xs : list nat) : list rich_num :=
+    match xs with
+    | [] => []
+    | x :: xs' => mkRichNum x γ (fraction / 2) bound :: divide_fragments γ (fraction / 2) bound xs'
+    end.
+
+  Lemma enrich_list γ q k xs v:
+    own γ (◯!{q} k) ∗ is_list is_num_ref xs v -∗ is_list is_rich_num_ref (divide_fragments γ q k xs) v.
+  Proof.
+  Admitted.
+
+  (* Lemma derich_list γ q k xs v: *)
+  (*   is_list is_rich_num_ref (divide_fragments γ q k xs) *)
+
+  Definition sum_invariant γ (l : loc) : iProp Σ :=
+    (∃k:nat, l ↦ #k ∗ own γ (●! k))%I.
+
   Lemma prog_sum_loop_wp (ls : loc) (n : nat) (v : val) (xs : list nat):
     {{{ is_list is_num_ref xs v ∗ ls ↦ #n }}}
       prog_sum_loop #ls v
     {{{ RET #(); is_list is_num_ref (add_one <$> xs) v ∗ ls ↦ #(sum xs + n)%nat }}}.
   Proof.
-    iIntros (Φ) "[Hv Hls] HΦ".
+    iIntros (Φ) "[Hxs Hls] HΦ".
     wp_rec; wp_pures. wp_lam. wp_pures.
+    iMod (own_alloc (●! n%nat ⋅ ◯! n%nat)) as (γ) "[Htrue Hfrag]"; first done.
+    iMod (inv_alloc (nroot.@"sum_loop") _ (sum_invariant γ ls) with "[Hls Htrue]") as "#Hinv".
+    { iModIntro. rewrite /sum_invariant. iExists n. iFrame. }
+    iPoseProof (enrich_list with "[$Hfrag $Hxs]") as "Hrich".
+    iApply (prog_for_each_wp rich_add_one with "[$Hrich]").
+    - (* prove Texan triple for f *)
+      iIntros (y vy Φ'). iModIntro.
+      iIntros "Hy HΦ'".
+      rewrite /is_rich_num_ref.
+      destruct y as [num γ' q bound].
+      iDestruct "Hy" as "[Hnum Hfrag]".
+      wp_lam.
+      rewrite /is_num_ref. iDestruct "Hnum" as (lnum ->) "Hnum".
+      wp_load.
+      wp_bind (FAA _ _).
+      iInv "Hinv" as ">Hauth" "cl".
+      rewrite /sum_invariant.
+      iDestruct "Hauth" as (k) "[Hls Htrue]".
+      wp_faa.
+      (* now update our ghost variables after adding *)
+      iMod (own_update γ' (●! k ⋅ ◯!{q} bound) (●! (k + num)%nat ⋅ ◯!{q} (bound + num)%nat) with "[Htrue Hfrag]") as "[Htrue Hfrag]".
+      { apply frac_auth_update, (nat_local_update _ _ (k + num)%nat (bound + num)%nat). omega. }
+      { rewrite own_op. iFrame. }
   Admitted.
 
+          (**)
   Lemma prog_sum_wp (v : val) (xs : list nat):
     {{{ is_list is_num_ref xs v }}}
       prog_sum v
@@ -146,8 +185,7 @@ Section SumExample.
     iApply "HΦ".
     iFrame.
     iPureIntro.
-    rewrite -plus_n_O.
-    done.
+    by rewrite -plus_n_O.
   Qed.
 
 End SumExample.
