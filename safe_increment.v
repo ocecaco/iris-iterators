@@ -71,10 +71,9 @@ Section SafeIncrement.
     wp_alloc s as "Hs".
     wp_let.
     wp_bind (_ ||| _)%E.
-    iMod (own_alloc (●! 0%nat ⋅ ◯! 0%nat)) as (γ) "[Hauth Hfrag]".
-    { admit. (* show that ghost state is valid *) }
+    iMod (own_alloc (●! 0%nat ⋅ ◯! 0%nat)) as (γ) "[Hauth Hfrag]"; first done.
     iAssert (own γ (◯!{1/2} 0%nat) ∗ own γ (◯!{1/2} 0%nat))%I with "[Hfrag]" as "[Hfrag1 Hfrag2]".
-    { admit. (* split the fragment *) }
+    { rewrite -own_op -frac_auth_frag_op. admit. }
     iMod (inv_alloc (nroot.@"par") _ (counter_inv γ s) with "[Hs Hauth]") as "#Hinv".
     { iModIntro. rewrite /counter_inv. iExists 0%nat. iFrame. }
     iApply (wp_par
