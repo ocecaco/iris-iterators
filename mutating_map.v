@@ -144,6 +144,44 @@ Section SumExample.
   Definition sum_invariant γ (l : loc) : iProp Σ :=
     (∃k:nat, l ↦ #k ∗ own γ (●! k))%I.
 
+  Lemma prog_mapper_wp N γ l:
+    ∀y vy,
+    inv N (sum_invariant γ l) -∗
+    {{{ is_rich_num_ref γ y vy }}}
+      (λ: "x", FAA #l ! "x";; "x" <- ! "x" + #1%nat)%V vy
+      {{{ w, RET w; is_rich_num_ref γ (rich_add_one y) vy }}}.
+  Proof.
+    iIntros (y vy).
+    iIntros "#Hinv".
+    iIntros (Φ). iModIntro.
+    iIntros "Hy HΦ".
+    rewrite /is_rich_num_ref.
+    destruct y as [num q bound]; simpl.
+    iDestruct "Hy" as "[Hnum Hfrag]".
+    wp_lam.
+    rewrite /is_num_ref. iDestruct "Hnum" as (lnum ->) "Hnum".
+    wp_load.
+    wp_bind (FAA _ _).
+    iInv "Hinv" as ">Hauth" "cl".
+    rewrite /sum_invariant.
+    iDestruct "Hauth" as (k) "[Hls Htrue]".
+    wp_faa.
+    (* now update our ghost variables after adding *)
+    iMod (own_update γ (●! k ⋅ ◯!{q} bound) (●! (k + num)%nat ⋅ ◯!{q} (bound + num)%nat) with "[Htrue Hfrag]") as "[Htrue Hfrag]".
+    { apply frac_auth_update, (nat_local_update _ _ (k + num)%nat (bound + num)%nat). omega. }
+    { rewrite own_op. iFrame. }
+    iMod ("cl" with "[Hls Htrue]") as "_".
+    { iModIntro. iExists (k + num)%nat. iFrame. admit. (* nat and Z mismatch *) }
+    iModIntro.
+    wp_seq.
+    wp_load. wp_op. wp_store. iApply "HΦ".
+    iSplitR "Hfrag".
+    + iExists lnum. iSplitR.
+      * done.
+      * admit. (* nat and Z mismatch *)
+    + admit. (* nat and Z mismatch *)
+  Admitted.
+
   Lemma prog_sum_loop_wp (ls : loc) (n : nat) (v : val) (xs : list nat):
     {{{ is_list is_num_ref xs v ∗ ls ↦ #n }}}
       prog_sum_loop #ls v
@@ -158,32 +196,13 @@ Section SumExample.
     wp_apply (prog_for_each_wp rich_add_one with "[$Hrich]").
     - (* prove Texan triple for f *)
       iIntros (y vy Φ'). iModIntro.
-      iIntros "Hy HΦ'".
-      rewrite /is_rich_num_ref.
-      destruct y as [num q bound]; simpl.
-      iDestruct "Hy" as "[Hnum Hfrag]".
-      wp_lam.
-      rewrite /is_num_ref. iDestruct "Hnum" as (lnum ->) "Hnum".
-      wp_load.
-      wp_bind (FAA _ _).
-      iInv "Hinv" as ">Hauth" "cl".
-      rewrite /sum_invariant.
-      iDestruct "Hauth" as (k) "[Hls Htrue]".
-      wp_faa.
-      (* now update our ghost variables after adding *)
-      iMod (own_update γ (●! k ⋅ ◯!{q} bound) (●! (k + num)%nat ⋅ ◯!{q} (bound + num)%nat) with "[Htrue Hfrag]") as "[Htrue Hfrag]".
-      { apply frac_auth_update, (nat_local_update _ _ (k + num)%nat (bound + num)%nat). omega. }
-      { rewrite own_op. iFrame. }
-      iMod ("cl" with "[Hls Htrue]") as "_".
-      { iModIntro. iExists (k + num)%nat. iFrame. admit. (* nat and Z mismatch *) }
-      iModIntro.
-      wp_seq.
-      wp_load. wp_op. wp_store. iApply "HΦ'".
-      iSplitR "Hfrag".
-      + iExists lnum. iSplitR.
-        * done.
-        * admit. (* nat and Z mismatch *)
-      + admit. (* nat and Z mismatch *)
+      iIntros "Hnum HΦ'".
+      iPoseProof (prog_mapper_wp _ _ _ y vy with "Hinv") as "Hmapper".
+      iSpecialize ("Hmapper" $! Φ' with "Hnum HΦ'").
+      (* I get these sometimes, not sure why they are in there *)
+      unlock.
+      iExact "Hmapper".
+
     - iIntros (w) "Hrich".
       wp_seq.
       iPoseProof (derich_list with "Hrich") as "[Hnums Hfrag]".
@@ -201,7 +220,7 @@ Section SumExample.
       { iModIntro. iExists (sum xs + n)%nat. iFrame. }
       iModIntro. iApply "HΦ".
       iFrame.
-  Admitted.
+  Qed.
 
   Lemma prog_sum_wp (v : val) (xs : list nat):
     {{{ is_list is_num_ref xs v }}}
