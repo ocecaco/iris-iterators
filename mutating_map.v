@@ -82,11 +82,11 @@ Section SumExample.
 
   Definition prog_sum_loop : val := λ: "s" "xs",
     let: "f" := prog_mapper "s" in
-    prog_for_each "f" "xs".
+    prog_for_each "f" "xs";; !"s".
 
   Definition prog_sum : val := λ: "xs",
     let: "s" := ref #0%nat in
-    prog_sum_loop "s" "xs";; !"s".
+    prog_sum_loop "s" "xs".
 
   Definition is_num_ref (x : nat) (v : val) : iProp Σ :=
     (∃(l : loc), ⌜v = #l⌝ ∗ l ↦ #x)%I.
@@ -135,13 +135,19 @@ Section SumExample.
   (* Lemma derich_list γ q k xs v: *)
   (*   is_list is_rich_num_ref (divide_fragments γ q k xs) *)
 
+  Lemma derich_list (γ : gname) (n : nat) (xs : list nat) (v : val) (q : frac):
+    (is_list (is_rich_num_ref γ) (rich_add_one <$> divide_fragments q n xs) v
+     -∗ is_list is_num_ref (add_one <$> xs) v ∗ own γ (◯!{q} (sum xs + n)%nat))%I.
+  Proof.
+  Admitted.
+
   Definition sum_invariant γ (l : loc) : iProp Σ :=
     (∃k:nat, l ↦ #k ∗ own γ (●! k))%I.
 
   Lemma prog_sum_loop_wp (ls : loc) (n : nat) (v : val) (xs : list nat):
     {{{ is_list is_num_ref xs v ∗ ls ↦ #n }}}
       prog_sum_loop #ls v
-    {{{ RET #(); is_list is_num_ref (add_one <$> xs) v ∗ ls ↦ #(sum xs + n)%nat }}}.
+    {{{ RET #((sum xs + n)%nat); is_list is_num_ref (add_one <$> xs) v }}}.
   Proof.
     iIntros (Φ) "[Hxs Hls] HΦ".
     wp_rec; wp_pures. wp_lam. wp_pures.
@@ -149,12 +155,12 @@ Section SumExample.
     iMod (inv_alloc (nroot.@"sum_loop") _ (sum_invariant γ ls) with "[Hls Htrue]") as "#Hinv".
     { iModIntro. rewrite /sum_invariant. iExists n. iFrame. }
     iPoseProof (enrich_list with "[$Hfrag $Hxs]") as "Hrich".
-    iApply (prog_for_each_wp rich_add_one with "[$Hrich]").
+    wp_apply (prog_for_each_wp rich_add_one with "[$Hrich]").
     - (* prove Texan triple for f *)
       iIntros (y vy Φ'). iModIntro.
       iIntros "Hy HΦ'".
       rewrite /is_rich_num_ref.
-      destruct y as [num q bound].
+      destruct y as [num q bound]; simpl.
       iDestruct "Hy" as "[Hnum Hfrag]".
       wp_lam.
       rewrite /is_num_ref. iDestruct "Hnum" as (lnum ->) "Hnum".
@@ -168,9 +174,35 @@ Section SumExample.
       iMod (own_update γ (●! k ⋅ ◯!{q} bound) (●! (k + num)%nat ⋅ ◯!{q} (bound + num)%nat) with "[Htrue Hfrag]") as "[Htrue Hfrag]".
       { apply frac_auth_update, (nat_local_update _ _ (k + num)%nat (bound + num)%nat). omega. }
       { rewrite own_op. iFrame. }
+      iMod ("cl" with "[Hls Htrue]") as "_".
+      { iModIntro. iExists (k + num)%nat. iFrame. admit. (* nat and Z mismatch *) }
+      iModIntro.
+      wp_seq.
+      wp_load. wp_op. wp_store. iApply "HΦ'".
+      iSplitR "Hfrag".
+      + iExists lnum. iSplitR.
+        * done.
+        * admit. (* nat and Z mismatch *)
+      + admit. (* nat and Z mismatch *)
+    - iIntros (w) "Hrich".
+      wp_seq.
+      iPoseProof (derich_list with "Hrich") as "[Hnums Hfrag]".
+      iInv "Hinv" as ">Hauth" "cl".
+      rewrite /sum_invariant.
+      iDestruct "Hauth" as (k) "[Hls Htrue]".
+      iCombine "Htrue" "Hfrag" as "Hauth".
+      iAssert (⌜k = (sum xs + n)%nat⌝)%I as "%".
+      { rewrite own_valid. iDestruct "Hauth" as "%". iPureIntro.
+        apply frac_auth_agreeL. done. }
+      subst.
+      iDestruct "Hauth" as "[Htrue Hfrag]".
+      wp_load.
+      iMod ("cl" with "[Hls Htrue]") as "_".
+      { iModIntro. iExists (sum xs + n)%nat. iFrame. }
+      iModIntro. iApply "HΦ".
+      iFrame.
   Admitted.
 
-          (**)
   Lemma prog_sum_wp (v : val) (xs : list nat):
     {{{ is_list is_num_ref xs v }}}
       prog_sum v
@@ -179,11 +211,9 @@ Section SumExample.
     iIntros (Φ) "Hxs HΦ".
     wp_lam. wp_alloc s as "Hs". wp_let.
     wp_apply (prog_sum_loop_wp with "[$Hxs $Hs]").
-    iIntros "[Hxs Hs]".
-    wp_seq. wp_load.
+    iIntros "Hnums".
     iApply "HΦ".
     iFrame.
-    iPureIntro.
     by rewrite -plus_n_O.
   Qed.
 
