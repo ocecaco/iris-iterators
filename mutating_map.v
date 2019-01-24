@@ -29,6 +29,7 @@ Section MutatingMap.
         "f" "head" ||| "for_each" "f" "rest"
       end.
 
+  (* for_each on empty list behaves like Skip *)
   Lemma prog_for_each_empty_wp {A} (res : A -> val -> iProp Σ) (f : val) (v : val):
     {{{ is_list res [] v }}} prog_for_each f v {{{ w, RET w; is_list res [] v }}}.
   Proof.
@@ -220,11 +221,16 @@ Section SumExample.
   Proof.
     iIntros (Φ) "[Hxs Hls] HΦ".
     wp_rec; wp_pures. wp_lam. wp_pures.
+    destruct xs. (* use different triple for empty list *)
+    { wp_apply (prog_for_each_empty_wp with "Hxs").
+      iIntros (w) "Hxs". wp_seq. wp_load.
+      iApply "HΦ".
+      simpl.
+      done. }
+    (* from this point on we know the list is non-empty *)
     iMod (own_alloc (●! 0%nat ⋅ ◯! 0%nat)) as (γ) "[Htrue Hfrag]"; first done.
     iMod (inv_alloc (nroot.@"sum_loop") _ (sum_invariant γ ls) with "[Hls Htrue]") as "#Hinv".
     { iModIntro. rewrite /sum_invariant. iExists 0%nat. iFrame. }
-    destruct xs.
-    { simpl.
     iPoseProof (enrich_list with "[$Hfrag $Hxs]") as "Hrich".
     wp_apply (prog_for_each_wp rich_add_one with "[$Hrich]").
     - (* prove Texan triple for f, very roundabout way, but couldn't
@@ -239,15 +245,14 @@ Section SumExample.
 
     - iIntros (w) "Hrich".
       wp_seq.
-      destruct xs as [|x xs'].
-      + (* empty list, no need to divide any ghost state *)
-
-      iPoseProof (derich_list with "Hrich") as "[Hnums Hfrag]".
+      iAssert (⌜n :: xs ≠ []⌝)%I as "Hnonempty".
+      { iPureIntro. intros. discriminate. }
+      iPoseProof (derich_list with "[$Hnonempty $Hrich]") as "[Hderich Hfrag]".
       iInv "Hinv" as ">Hauth" "cl".
       rewrite /sum_invariant.
       iDestruct "Hauth" as (k) "[Hls Htrue]".
       iCombine "Htrue" "Hfrag" as "Hauth".
-      iAssert (⌜k = (sum xs)%nat⌝)%I as "%".
+      iAssert (⌜k = (sum (n :: xs))%nat⌝)%I as "%".
       { rewrite own_valid. iDestruct "Hauth" as "%". iPureIntro.
         apply frac_auth_agreeL.
         admit. (* nat vs Z *) }
@@ -255,7 +260,7 @@ Section SumExample.
       iDestruct "Hauth" as "[Htrue Hfrag]".
       wp_load.
       iMod ("cl" with "[Hls Htrue]") as "_".
-      { iModIntro. iExists (sum xs)%nat. iFrame. }
+      { iModIntro. iExists (sum (n :: xs))%nat. iFrame. }
       iModIntro. iApply "HΦ".
       iFrame.
   Admitted.
