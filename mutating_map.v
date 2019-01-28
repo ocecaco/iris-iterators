@@ -30,25 +30,26 @@ Section MutatingMap.
       end.
 
   (* for_each on empty list behaves like Skip *)
-  Lemma prog_for_each_empty_wp {A} (res : A -> val -> iProp Σ) (f : val) (v : val):
-    {{{ is_list res [] v }}} prog_for_each f v {{{ w, RET w; is_list res [] v }}}.
+  Lemma prog_for_each_empty_wp {A} {B} (res_a : A -> val -> iProp Σ) (res_b : B -> val -> iProp Σ) (f : val) (v : val):
+    {{{ is_list res_a [] v }}} prog_for_each f v {{{ w, RET w; is_list res_b [] v }}}.
   Proof.
     iIntros (Φ) "Hv HΦ". iDestruct "Hv" as "%"; subst.
     wp_lam. wp_pures. iApply "HΦ".
     rewrite /is_list. done.
   Qed.
 
-  Lemma prog_for_each_wp {A}
-        (f_coq : A -> A)
-        (res : A -> val -> iProp Σ)
+  Lemma prog_for_each_wp {A} {B}
+        (f_coq : A -> B)
+        (res_a : A -> val -> iProp Σ)
+        (res_b : B -> val -> iProp Σ)
         (xs : list A)
         (f : val)
         (vs : val):
-    {{{ is_list res xs vs
-      ∗ (∀ (y : A) (vy : val), {{{ res y vy }}} f vy {{{ q, RET q; res (f_coq y) vy }}})
+    {{{ is_list res_a xs vs
+      ∗ (∀ (y : A) (vy : val), {{{ res_a y vy }}} f vy {{{ q, RET q; res_b (f_coq y) vy }}})
     }}}
       prog_for_each f vs
-    {{{ w, RET w; is_list res (f_coq <$> xs) vs }}}.
+    {{{ w, RET w; is_list res_b (f_coq <$> xs) vs }}}.
   Proof.
     iIntros (Φ) "(Hxs & #Hf) HΦ".
     iInduction xs as [|x xs'] "IH" forall (vs Φ); simpl; wp_rec; wp_let.
@@ -60,8 +61,8 @@ Section MutatingMap.
       wp_load. wp_proj. wp_let.
       wp_load. wp_proj. wp_let.
       iApply (wp_par
-                (fun _ => res (f_coq x) v)%I
-                (fun _ => is_list res (f_coq <$> xs') vs')%I
+                (fun _ => res_b (f_coq x) v)%I
+                (fun _ => is_list res_b (f_coq <$> xs') vs')%I
                 with "[Hres] [Hxs']").
       + (* left fork *) iApply ("Hf" with "[$Hres]").
         iModIntro. iIntros (_) "Hres". by iFrame.
@@ -226,7 +227,7 @@ Section SumExample.
     iIntros (Φ) "[Hxs Hls] HΦ".
     wp_rec; wp_pures. wp_lam. wp_pures.
     destruct xs. (* use different triple for empty list *)
-    { wp_apply (prog_for_each_empty_wp with "Hxs").
+    { wp_apply (prog_for_each_empty_wp is_num_ref is_num_ref with "Hxs").
       iIntros (w) "Hxs". wp_seq. wp_load.
       iApply "HΦ".
       simpl.
