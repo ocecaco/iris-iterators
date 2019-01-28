@@ -12,7 +12,7 @@ Section Recursion.
     λ: "f", let: "r" := ref (λ: "x", "x") in "r" <- (λ: "x", "f" (!"r") "x");; !"r".
 
   Definition F : val :=
-    λ: "f" "x", if: "x" = #0 then #1 else "x" * "f" ("x" - #1).
+    λ: "f" "x", if: "x" = #0 then #1 else "x" * "f" ("x" - #1%nat).
 
   Definition fac : expr := myrec F.
 
@@ -32,7 +32,7 @@ Section Recursion.
     end.
 
   Lemma fac_wp (n : nat):
-     {{{ ⌜True⌝ }}} fac #(Z.of_nat n) {{{ v, RET v; ⌜v = #(factorial n)⌝ }}}.
+     {{{ ⌜True⌝ }}} fac #n {{{ v, RET v; ⌜v = #(factorial n)⌝ }}}.
   Proof.
     iStartProof.
     iIntros (Φ) "_ HΦ".
@@ -55,11 +55,11 @@ Section Recursion.
       wp_load.
       iMod ("cl" with "[Hr]") as "_"; first done. iModIntro.
       wp_rec. wp_pures.
-      replace (S n' - 1) with (n' : Z) by admit.
+      replace (S n' - 1%nat) with (n' : Z). 2: { rewrite -Nat2Z.inj_sub. rewrite Nat2Z.inj_iff. simpl. by rewrite -minus_n_O. admit. }
       wp_apply "IH".
       iIntros (v2 ->).
       wp_op.
-      replace (S n' * factorial n') with (factorial (S n') : Z) by admit.
+      replace (S n' * factorial n') with (factorial (S n') : Z). 2: { rewrite -Nat2Z.inj_mul. by rewrite Nat2Z.inj_iff. }
       by iApply "HΦ".
   Admitted.
 

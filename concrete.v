@@ -57,7 +57,7 @@ Section Concrete.
     rec: "loop" "n" :=
       if: "n" = #0
       then #0
-      else "loop" ("n" - #1) + #1.
+      else "loop" ("n" - #1%nat) + #1.
 
   (* The error message you get when you forget the heapG Σ is somewhat
   cryptic. I just put it in the Context now so I cannot forget
@@ -73,8 +73,6 @@ Section Concrete.
     iInduction n as [|n'] "IH"; rewrite /simple_loop; wp_rec.
     - wp_op. wp_if_true. done.
     - wp_op. wp_if_false. wp_op.
-      assert (Hn': S n' - 1 = n'). { admit. }
-      rewrite Hn'.
   Admitted.
 
 End Concrete.
