@@ -187,10 +187,8 @@ Section SumExample.
       FAA #l ! vy;; vy <- ! vy + #1%nat
     {{{ w, RET w; is_rich_num_ref γ (rich_add_one y) vy }}}.
   Proof.
-    iIntros (y vy).
-    iIntros "#Hinv".
-    iIntros (Φ). iModIntro.
-    iIntros "Hy HΦ".
+    iIntros (y vy) "#Hinv".
+    iIntros (Φ) "!# Hy HΦ".
     rewrite /is_rich_num_ref.
     destruct y as [num q bound]; simpl.
     iDestruct "Hy" as "[Hnum Hfrag]".
