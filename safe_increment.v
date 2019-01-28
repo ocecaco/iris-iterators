@@ -9,6 +9,8 @@ From iris.algebra Require Export cmra.
 Set Default Proof Using "Type".
 
 Section SafeIncrement.
+  Local Set Default Proof Using "Type*".
+
   Class myG Σ := MyG { myG_inG :> inG Σ (frac_authR natR) }.
   Definition myΣ : gFunctors := #[GFunctor (frac_authR natR)].
 
@@ -18,12 +20,12 @@ Section SafeIncrement.
   Context `{!heapG Σ, !myG Σ, !spawnG Σ}.
 
   Definition prog_safe_inc : val :=
-    λ: "x", FAA "x" #1.
+    λ: "x", FAA "x" #1%nat.
 
   Lemma prog_safe_inc_wp (l : loc):
-    {{{ l ↦ #0 }}}
+    {{{ l ↦ #0%nat }}}
       prog_safe_inc #l
-    {{{ RET #0; l ↦ #1 }}}.
+    {{{ RET #0; l ↦ #1%nat }}}.
   Proof.
     iIntros (Φ) "Hl HΦ".
     wp_lam. wp_faa.
@@ -55,13 +57,13 @@ Section SafeIncrement.
     wp_faa.
     iCombine "Htrue" "Hfrag" as "Hcomb".
     iMod (own_update γ _ ((●! (k + 1)%nat) ⋅ (◯!{1/2} 1%nat)) with "[$Hcomb]") as "Hcomb".
-    { admit. (* show that this update is frame-preserving *) }
+    { apply frac_auth_update, (nat_local_update _ _ (k + 1)%nat 1%nat). by rewrite -plus_n_O. }
     rewrite own_op.
     iDestruct "Hcomb" as "[Hauth Hfrag]".
     iMod ("cl" with "[Hs Hauth]") as "_".
-    { iModIntro. iExists (k + 1)%nat. iFrame. admit. }
+    { iModIntro. iExists (k + 1)%nat. iFrame. by rewrite Nat2Z.inj_add. }
     iModIntro. iApply "HΦ". iFrame.
-  Admitted.
+  Qed.
 
   Lemma prog_safe_inc_par_wp:
     {{{ ⌜True⌝ }}} prog_inc_par {{{ v, RET v; ⌜v = #2⌝ }}}.
@@ -73,7 +75,7 @@ Section SafeIncrement.
     wp_bind (_ ||| _)%E.
     iMod (own_alloc (●! 0%nat ⋅ ◯! 0%nat)) as (γ) "[Hauth Hfrag]"; first done.
     iAssert (own γ (◯!{1/2} 0%nat) ∗ own γ (◯!{1/2} 0%nat))%I with "[Hfrag]" as "[Hfrag1 Hfrag2]".
-    { rewrite -own_op -frac_auth_frag_op. admit. }
+    { by rewrite -own_op -frac_auth_frag_op Qp_half_half. }
     iMod (inv_alloc (nroot.@"par") _ (counter_inv γ s) with "[Hs Hauth]") as "#Hinv".
     { iModIntro. rewrite /counter_inv. iExists 0%nat. iFrame. }
     iApply (wp_par
@@ -84,10 +86,13 @@ Section SafeIncrement.
       rewrite /is_counter. iSplitL "Hfrag1". iAssumption. iAssumption.
       wp_apply (prog_safe_frac with "[$Hcounter]").
       iIntros (v) "Hfrag". iExact "Hfrag".
-    - admit. (* similar to previous *)
+    - iAssert (is_counter _ _ _ _ _)%I with "[Hinv Hfrag2]" as "Hcounter".
+      rewrite /is_counter. iSplitL "Hfrag2". iAssumption. iAssumption.
+      wp_apply (prog_safe_frac with "[$Hcounter]").
+      iIntros (v) "Hfrag". iExact "Hfrag".
     - iIntros (v1 v2) "[Hfrag1 Hfrag2]".
       iCombine "Hfrag1" "Hfrag2" as "Hfrag".
-      replace (1 + 1)%nat with 2%nat by admit.
+      replace (1 + 1)%nat with 2%nat. 2: { simpl. reflexivity. }
       iModIntro.
       wp_seq.
       iInv "Hinv" as ">Hauth" "cl".
@@ -109,6 +114,6 @@ Section SafeIncrement.
         iModIntro.
         iApply "HΦ".
         done.
-  Admitted.
+  Qed.
 
 End SafeIncrement.
