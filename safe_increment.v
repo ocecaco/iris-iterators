@@ -83,11 +83,11 @@ Section SafeIncrement.
               (fun v => own γ (◯!{1/2} 1%nat))
               with "[Hfrag1] [Hfrag2]").
     - iAssert (is_counter _ _ _ _ _)%I with "[Hinv Hfrag1]" as "Hcounter".
-      rewrite /is_counter. iSplitL "Hfrag1". iAssumption. iAssumption.
+      { rewrite /is_counter. iSplitL "Hfrag1". iAssumption. iAssumption. }
       wp_apply (prog_safe_frac with "[$Hcounter]").
       iIntros (v) "Hfrag". iExact "Hfrag".
     - iAssert (is_counter _ _ _ _ _)%I with "[Hinv Hfrag2]" as "Hcounter".
-      rewrite /is_counter. iSplitL "Hfrag2". iAssumption. iAssumption.
+      { rewrite /is_counter. iSplitL "Hfrag2". iAssumption. iAssumption. }
       wp_apply (prog_safe_frac with "[$Hcounter]").
       iIntros (v) "Hfrag". iExact "Hfrag".
     - iIntros (v1 v2) "[Hfrag1 Hfrag2]".
