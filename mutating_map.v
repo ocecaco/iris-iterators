@@ -184,8 +184,8 @@ Section SumExample.
     ∀y vy,
     inv N (sum_invariant γ l) -∗
     {{{ is_rich_num_ref γ y vy }}}
-      (λ: "x", FAA #l ! "x";; "x" <- ! "x" + #1%nat)%V vy
-      {{{ w, RET w; is_rich_num_ref γ (rich_add_one y) vy }}}.
+      FAA #l ! vy;; vy <- ! vy + #1%nat
+    {{{ w, RET w; is_rich_num_ref γ (rich_add_one y) vy }}}.
   Proof.
     iIntros (y vy).
     iIntros "#Hinv".
@@ -194,7 +194,6 @@ Section SumExample.
     rewrite /is_rich_num_ref.
     destruct y as [num q bound]; simpl.
     iDestruct "Hy" as "[Hnum Hfrag]".
-    wp_lam.
     rewrite /is_num_ref. iDestruct "Hnum" as (lnum ->) "Hnum".
     wp_load.
     wp_bind (FAA _ _).
@@ -238,15 +237,11 @@ Section SumExample.
     { iModIntro. rewrite /sum_invariant. iExists 0%nat. iFrame. }
     iPoseProof (enrich_list with "[$Hfrag $Hxs]") as "Hrich".
     wp_apply (prog_for_each_wp rich_add_one with "[$Hrich]").
-    - (* prove Texan triple for f, very roundabout way, but couldn't
-      manage to directly apply prog_mapper_wp *)
-      iIntros (y vy Φ'). iModIntro.
-      iIntros "Hnum HΦ'".
-      iPoseProof (prog_mapper_wp _ _ _ y vy with "Hinv") as "Hmapper".
-      iSpecialize ("Hmapper" $! Φ' with "Hnum HΦ'").
-      (* I get these sometimes, not sure why they are in there *)
-      unlock.
-      iExact "Hmapper".
+    - iIntros (y vy Φ') "!# Hnum HΦ'".
+      wp_apply (prog_mapper_wp with "[$Hinv] [$Hnum]").
+      iIntros (w) "Hnum".
+      iApply "HΦ'".
+      iExact "Hnum".
 
     - iIntros (w) "Hrich".
       wp_seq.
