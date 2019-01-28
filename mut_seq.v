@@ -21,24 +21,25 @@ Section MutatingMap.
       | InjR "cons" => "f" (Fst !"cons");; "for_each" "f" (Snd !"cons")
       end.
 
-  Lemma prog_for_each_loop_wp {A}
+  Lemma prog_for_each_loop_wp {A} {B}
         (past : list A)
-        (res : A -> val -> iProp Σ)
+        (res_a : A -> val -> iProp Σ)
+        (res_b : B -> val -> iProp Σ)
         (I : list A -> iProp Σ)
-        (f_coq : A -> A)
+        (f_coq : A -> B)
         (xs : list A)
         (f : val)
         (vs : val):
-    {{{ is_list res xs vs
+    {{{ is_list res_a xs vs
       ∗ I past
       (* the invariant needs to be stated in terms of the old list,
       and not the new one, because f_coq might not have an inverse. Of
       course we could also give both the old and the new values, but
       that would be redundant since x' = f_coq x. *)
-      ∗ (∀ y ys vy, {{{ res y vy ∗ I ys }}} f vy {{{ RET #(); res (f_coq y) vy ∗ I (ys ++ [y]) }}})
+      ∗ (∀ y ys vy, {{{ res_a y vy ∗ I ys }}} f vy {{{ RET #(); res_b (f_coq y) vy ∗ I (ys ++ [y]) }}})
     }}}
       prog_for_each f vs
-    {{{ RET #(); is_list res (f_coq <$> xs) vs ∗ I (past ++ xs) }}}.
+    {{{ RET #(); is_list res_b (f_coq <$> xs) vs ∗ I (past ++ xs) }}}.
   Proof.
     iIntros (Φ) "(Hxs & HI & #Hf) HΦ".
     iInduction xs as [|x xs'] "IH" forall (past vs Φ); simpl; wp_rec; wp_let.
@@ -61,7 +62,7 @@ Section MutatingMap.
       by iFrame.
   Qed.
 
-  Definition prog_for_each_wp {A} := @prog_for_each_loop_wp A [].
+  Definition prog_for_each_wp {A} {B} := @prog_for_each_loop_wp A B [].
 
 End MutatingMap.
 
@@ -106,6 +107,7 @@ Section SumExample.
     iAssert (sum_invariant ls n []) with "[Hls]" as "Hls".
     { rewrite /sum_invariant. simpl. by replace (0 + n)%Z with n%Z by omega. }
     wp_apply (prog_for_each_wp
+                num_to_ref
                 num_to_ref
                 (sum_invariant ls n)
                 add_one
