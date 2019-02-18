@@ -1,0 +1,4 @@
+# iris-iterators
+This repository contains separation logic specifications of two list iterator implementations (think for-each). I developed these specifications during a 4-week project I did under the supervision of Robbert Krebbers at Delft University of Technology. The specifications are written in Coq using the Iris concurrent separation logic, which is a logic well-suited for reasoning about programs with fine-grained concurrency.
+
+The file `for_each_sequential.v` contains a sequential for-each implementation and a corresponding separation logic specification, which is then used to verify the correctness of a small program. The file `for_each_parallel.v` is similar, except the for-each implementation processes the elements of the list in parallel. The specification of the parallel iterator is used to verify a program that uses an atomic Fetch-and-Add instruction to avoid race conditions.
